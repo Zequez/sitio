@@ -11,19 +11,17 @@ my-site
 │
 ├ pages
 │   ├ index.html
-│   └ about.svelte
-│
-├ layouts
-│   └ default.html
+│   └ about.html
 │
 ├ components
-│   └ my-component.svelte
+│   ├ Layout.html
+│   └ Button.svelte
 │
-├ assets
+├ public
 │   ├ icon.png
 │   └ style.css
 │
-└ dist
+└ out
 ```
 
 ## Running
