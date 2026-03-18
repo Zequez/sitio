@@ -11,7 +11,8 @@ my-site
 │
 ├ pages
 │   ├ index.html
-│   └ about.html
+│   ├ about.html
+│   └ 404.html
 │
 ├ components
 │   ├ Layout.html

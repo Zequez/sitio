@@ -1,7 +1,7 @@
 import { createGenerator } from "unocss";
 import { readdir, readFile, writeFile, mkdir, copyFile } from "fs/promises";
 
-import unoCssConfig from "../../unocss.config.ts";
+import unoCssConfig from "../../unocss.build.config.ts";
 
 const uno = await createGenerator(unoCssConfig);
 

@@ -4,12 +4,18 @@ import { type UserConfig } from "vite";
 
 import { createLiquidPagesPlugin } from "./src/vite-plugins/liquid-pages-plugin";
 import { notFoundPlugin } from "./src/vite-plugins/not-found-plugin";
+import { refreshOnComponentsChangePlugin } from "./src/vite-plugins/refresh-on-components-change-plugin";
+import { unoVirtualLinkPlugin } from "./src/vite-plugins/uno-virtual-link-plugin";
+import UnoCSS from "unocss/vite";
+import generateUnoCSSConfig from "./unocss.build.config";
 
 export interface SitioBuildMetaConfigOptions {
   rootDir: string;
   port: number;
   liquidData?: Record<string, unknown>;
 }
+
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
 export async function defineSitioBuildMetaConfig({
   rootDir,
@@ -19,23 +25,34 @@ export async function defineSitioBuildMetaConfig({
   const resolvedRootDir = path.resolve(rootDir);
   const pagesDir = path.join(resolvedRootDir, "pages");
   const componentsDir = path.join(resolvedRootDir, "components");
+  const rootDirHash = Buffer.from(resolvedRootDir).toString("base64");
 
-  const [input, liquidPagesPlugin, restartPlugin] =
-    await createLiquidPagesPlugin(pagesDir, componentsDir);
+  const [input, liquidPagesPlugin] = await createLiquidPagesPlugin(
+    pagesDir,
+    componentsDir,
+  );
 
   return {
     root: pagesDir,
+    clearScreen: false,
     publicDir: path.join(resolvedRootDir, "public"),
-    plugins: [liquidPagesPlugin, restartPlugin, notFoundPlugin()],
+    plugins: [
+      liquidPagesPlugin,
+      unoVirtualLinkPlugin(),
+      refreshOnComponentsChangePlugin(componentsDir),
+      notFoundPlugin(),
+      UnoCSS(generateUnoCSSConfig()),
+    ],
+    cacheDir: path.join(__dirname, `node_modules/.vite-${rootDirHash}`),
     server: {
       port,
       fs: {
-        allow: [resolvedRootDir],
+        allow: [resolvedRootDir, componentsDir],
       },
     },
     build: {
       rollupOptions: {
-        input,
+        input, // This is just for build, so does not matter if it doesn't regenrate on server restart
       },
     },
   };

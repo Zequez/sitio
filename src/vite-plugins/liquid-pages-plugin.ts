@@ -1,5 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import * as path from "node:path";
 
 import { type Plugin } from "vite";
@@ -7,7 +6,6 @@ import { Liquid } from "liquidjs";
 import type { FS } from "liquidjs/dist/fs/fs";
 
 import { replaceComponents } from "../lib/htmlTagsToLiquidInclude.ts";
-import { restartOnTemplateTopologyChangePlugin } from "./restart-on-template-topology-change.ts";
 
 export async function createLiquidPagesPlugin(
   pagesDir: string,
@@ -18,12 +16,9 @@ export async function createLiquidPagesPlugin(
       [k: string]: string;
     },
     Plugin,
-    Plugin,
   ]
 > {
   const input = await collectHtmlEntrypoints(pagesDir);
-  const { componentNames, templates: componentTemplates } =
-    await collectComponentTemplates(componentsDir);
 
   const liquidData = {};
 
@@ -33,7 +28,7 @@ export async function createLiquidPagesPlugin(
     layouts: pagesDir,
     extname: ".html",
     relativeReference: true,
-    fs: createLiquidTemplateFs(pagesDir, componentTemplates),
+    fs: createLiquidTemplateFs(pagesDir, componentsDir),
   });
 
   return [
@@ -47,6 +42,8 @@ export async function createLiquidPagesPlugin(
           if (!ctx.filename.startsWith(`${pagesDir}${path.sep}`)) {
             return html;
           }
+
+          const componentNames = await collectComponentsNames(componentsDir);
 
           const processedTemplate = await replaceComponents(
             html,
@@ -63,29 +60,12 @@ export async function createLiquidPagesPlugin(
         },
       },
     },
-    restartOnTemplateTopologyChangePlugin(pagesDir, componentsDir),
   ];
 }
 
 interface HtmlTemplateFile {
   filePath: string;
   name: string;
-}
-
-function withHtmlExtension(filePath: string, extname: string) {
-  return path.extname(filePath) ? filePath : `${filePath}${extname}`;
-}
-
-function normalizeTemplateName(name: string) {
-  return name.split(path.sep).join("/");
-}
-
-function stripHtmlExtension(name: string) {
-  return name.endsWith(".html") ? name.slice(0, -".html".length) : name;
-}
-
-function toTemplateLookupKey(filePath: string) {
-  return stripHtmlExtension(path.basename(normalizeTemplateName(filePath)));
 }
 
 function toComponentName(relativePath: string) {
@@ -95,14 +75,14 @@ function toComponentName(relativePath: string) {
     .join("-");
 }
 
-async function collectHtmlFiles(
+function collectHtmlFiles(
   rootDir: string,
   currentDir = rootDir,
-): Promise<HtmlTemplateFile[]> {
+): HtmlTemplateFile[] {
   let entries;
 
   try {
-    entries = await readdir(currentDir, { withFileTypes: true });
+    entries = readdirSync(currentDir, { withFileTypes: true });
   } catch {
     return [];
   }
@@ -117,7 +97,7 @@ async function collectHtmlFiles(
     const absolutePath = path.join(currentDir, entry.name);
 
     if (entry.isDirectory()) {
-      htmlFiles.push(...(await collectHtmlFiles(rootDir, absolutePath)));
+      htmlFiles.push(...collectHtmlFiles(rootDir, absolutePath));
       continue;
     }
 
@@ -129,15 +109,15 @@ async function collectHtmlFiles(
 
     htmlFiles.push({
       filePath: absolutePath,
-      name: normalizeTemplateName(relativePath),
+      name: relativePath.split(path.sep).join("/"),
     });
   }
 
   return htmlFiles;
 }
 
-async function collectHtmlEntrypoints(pagesDir: string) {
-  const pageFiles = await collectHtmlFiles(pagesDir);
+function collectHtmlEntrypoints(pagesDir: string) {
+  const pageFiles = collectHtmlFiles(pagesDir);
 
   return Object.fromEntries(
     pageFiles.map(({ filePath, name }) => [
@@ -147,115 +127,61 @@ async function collectHtmlEntrypoints(pagesDir: string) {
   );
 }
 
-async function collectComponentTemplates(componentsDir: string) {
-  const componentFiles = await collectHtmlFiles(componentsDir);
+function collectComponentsNames(componentsDir: string) {
+  const componentFiles = collectHtmlFiles(componentsDir);
   const componentNames = componentFiles.map(({ name }) =>
     toComponentName(name),
   );
-  const templates: Record<string, string> = {};
-  const slotRegex = /<slot\s*\/\s*>/i;
 
-  for (const componentFile of componentFiles) {
-    const componentName = toComponentName(componentFile.name);
-    const source = await readFile(componentFile.filePath, "utf8");
-    const processedTemplate = await replaceComponents(source, componentNames);
-    const slotMatch = slotRegex.exec(processedTemplate);
-
-    if (!slotMatch) {
-      templates[`component-${componentName}`] = processedTemplate;
-      continue;
-    }
-
-    templates[`component-${componentName}-start`] = processedTemplate.slice(
-      0,
-      slotMatch.index,
-    );
-    templates[`component-${componentName}-end`] = processedTemplate.slice(
-      slotMatch.index + slotMatch[0].length,
-    );
-  }
-
-  return {
-    componentNames,
-    templates,
-  };
+  return componentNames;
 }
 
-function createLiquidTemplateFs(
-  pagesDir: string,
-  componentTemplates: Record<string, string>,
-): FS {
-  async function fileExists(filePath: string) {
-    try {
-      await readFile(filePath, "utf8");
-      return true;
-    } catch {
-      return false;
-    }
+function createLiquidTemplateFs(pagesDir: string, componentsDir: string): FS {
+  function rewriteAsComponentPath(filePath: string): string | null {
+    const templateKey = path.basename(filePath);
+    return templateKey.startsWith("component-")
+      ? path.join(componentsDir, templateKey.replace(/^component\-/, ""))
+      : null;
   }
 
-  function getComponentTemplate(filePath: string) {
-    const normalizedPath = normalizeTemplateName(filePath);
-    const templateKey = toTemplateLookupKey(filePath);
-
-    return (
-      componentTemplates[normalizedPath] ?? componentTemplates[templateKey]
-    );
+  function readTemplateSync(filePath: string) {
+    const componentNames = collectComponentsNames(componentsDir);
+    return replaceComponents(readFileSync(filePath, "utf8"), componentNames);
   }
 
-  function isComponentTemplate(filePath: string) {
-    return getComponentTemplate(filePath) !== undefined;
-  }
-
-  function isInsidePagesRoot(filePath: string) {
-    const relativePath = path.relative(pagesDir, filePath);
-    return (
-      relativePath === "" ||
-      (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-    );
-  }
+  const debug = false;
+  const log = debug ? console.log : () => {};
 
   return {
     sep: path.sep,
     async exists(filePath) {
-      return isComponentTemplate(filePath) || (await fileExists(filePath));
+      log("exists", filePath);
+      const componentTemplatePath = rewriteAsComponentPath(filePath);
+      return existsSync(componentTemplatePath || filePath);
     },
     existsSync(filePath) {
-      return isComponentTemplate(filePath) || existsSync(filePath);
+      log("existsSync", filePath);
+      const componentTemplatePath = rewriteAsComponentPath(filePath);
+      return existsSync(componentTemplatePath || filePath);
     },
     async readFile(filePath) {
-      const template = getComponentTemplate(filePath);
-
-      if (template !== undefined) {
-        return template;
-      }
-
-      return readFile(filePath, "utf8");
+      log("readFile", filePath);
+      const componentTemplatePath = rewriteAsComponentPath(filePath);
+      return readTemplateSync(componentTemplatePath || filePath);
     },
     readFileSync(filePath) {
-      const template = getComponentTemplate(filePath);
-
-      if (template !== undefined) {
-        return template;
-      }
-
-      return readFileSync(filePath, "utf8");
+      log("readFileSync", filePath);
+      const componentTemplatePath = rewriteAsComponentPath(filePath);
+      return readTemplateSync(componentTemplatePath || filePath);
     },
     resolve(dir, file, ext) {
-      const templateName = normalizeTemplateName(withHtmlExtension(file, ext));
-
-      if (templateName in componentTemplates) {
-        return templateName;
-      }
-
-      return path.resolve(dir, withHtmlExtension(file, ext));
+      log("resolve", dir, file, ext);
+      const fullPath = path.join(dir, `${file}${ext}`);
+      return rewriteAsComponentPath(fullPath) || fullPath;
     },
     contains(root, file) {
-      return (
-        isComponentTemplate(file) ||
-        isInsidePagesRoot(file) ||
-        isInsidePagesRoot(path.resolve(root, file))
-      );
+      log("contains", root, file);
+      return true;
     },
     dirname(file) {
       return path.dirname(file);

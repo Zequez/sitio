@@ -21,36 +21,57 @@ function paramsToLiquid(params: Record<string, string>) {
  * await replaceComponents(html, ["Layout", "Button"])
  *
  * Output:
- * {% include "component-Layout-start" title="Hello" %}
- * <p>World</p>
- * {% include "component-Layout-end" title="Hello" %}
+ * {% capture LayoutContent %}<p>World</p>{% endcapture %}
+ * {% render "component-Layout", title: "Hello", content: LayoutContent %}
  *
- * {% include "component-Button" size="lg" %}
+ * {% render "component-Button", size: "lg" %}
  *
 ```
  */
 
-export async function replaceComponents(html: string, tags: string[]) {
+export function replaceComponents(html: string, tags: string[]) {
   const tagSet = new Set(tags);
+  const tagPattern = Array.from(tagSet).join("|");
 
-  return html.replace(
-    /<\/?([A-Z][A-Za-z0-9]*)\b([^>]*)\/?>/g,
-    (match, name, attrs) => {
-      if (!tagSet.has(name)) return match;
+  if (tagPattern.length === 0) {
+    return html;
+  }
 
+  let result = html;
+  const blockTagPattern = new RegExp(
+    `<(${tagPattern})\\b([^>]*)>([\\s\\S]*?)<\\/\\1>`,
+    "g",
+  );
+  const selfClosingTagPattern = new RegExp(
+    `<(${tagPattern})\\b([^>]*)\\/>`,
+    "g",
+  );
+
+  while (blockTagPattern.test(result)) {
+    blockTagPattern.lastIndex = 0;
+    result = result.replace(
+      blockTagPattern,
+      (_, name: string, attrs: string, content: string) => {
+        const params = parseAttrs(attrs);
+        const paramString = paramsToLiquid(params);
+        const contentVar = `${name}Content`;
+        const contentSuffix = paramString
+          ? `, ${paramString}, content: ${contentVar}`
+          : `, content: ${contentVar}`;
+
+        return `{% capture ${contentVar} %}${content}{% endcapture %}{% render "component-${name}"${contentSuffix} %}`;
+      },
+    );
+  }
+
+  return result.replace(
+    selfClosingTagPattern,
+    (_, name: string, attrs: string) => {
       const params = parseAttrs(attrs);
       const paramString = paramsToLiquid(params);
       const paramSuffix = paramString ? `, ${paramString}` : "";
 
-      if (match.startsWith("</")) {
-        return `{% include "component-${name}-end"${paramSuffix} %}`;
-      }
-
-      if (match.endsWith("/>")) {
-        return `{% include "component-${name}"${paramSuffix} %}`;
-      }
-
-      return `{% include "component-${name}-start"${paramSuffix} %}`;
+      return `{% render "component-${name}"${paramSuffix} %}`;
     },
   );
 }
