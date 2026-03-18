@@ -1,0 +1,12 @@
+{
+  "workbench.colorCustomizations": {
+    "rust_analyzer.inlayHints.foreground": "#00000025",
+    "rust_analyzer.inlayHints.background": "#0000ff08",
+    "[Quiet Dark]": {
+      "editor.background": "#1b1e27"
+    },
+    "activityBar.background": "#382B1D",
+    "titleBar.activeBackground": "#4F3C28",
+    "titleBar.activeForeground": "#FBFAF8"
+  }
+}
