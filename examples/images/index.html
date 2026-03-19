@@ -1,9 +1,38 @@
 <StandardLayout
   title="Test con imagenes"
-  class="flex-cc h-screen w-screen bg-gray-100 p4"
+  class="h-screen w-screen bg-gray-100 p4"
 >
-  <img
-    src="/images/ezequiel/thumb_1.webp"
-    class="w-100 max-w-full rounded-md shadow-md"
-  />
+  <div class="flex grid-cols-3 gap-2">
+    <div w-10% flex-cc p-1>
+      <img rounded-sm src="{{images.jardin.thumb_0}}" />
+    </div>
+    <div w-30% flex-cc p-1>
+      <img rounded-sm src="{{images.jardin.thumb_1}}" />
+    </div>
+    <div w-60% flex-cc p-1>
+      <img rounded-sm src="{{images.jardin.thumb_2}}" />
+    </div>
+  </div>
+  <div class="flex grid-cols-3 gap-2">
+    <div w-10% flex-cc p-1>
+      <img rounded-sm src="{{images.jardin.0}}" />
+    </div>
+    <div w-30% flex-cc p-1>
+      <img rounded-sm src="{{images.jardin.1}}" />
+    </div>
+    <div w-60% flex-cc p-1>
+      <img rounded-sm src="{{images.jardin.2}}" />
+    </div>
+  </div>
+  <div class="flex grid-cols-1 gap-2">
+    <div w-100% flex-cc p-1>
+      <img rounded-sm src="{{images.jardin.3}}" />
+    </div>
+  </div>
+
+  <div class="flex grid-cols-1 gap-2">
+    <div w-100% flex-cc p-1>
+      <img rounded-sm src="{{images.jardin.4}}" />
+    </div>
+  </div>
 </StandardLayout>

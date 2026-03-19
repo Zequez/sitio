@@ -30,8 +30,9 @@ export async function defineSitioBuildMetaConfig({
   let pagesDir = path.join(resolvedRootDir, "pages");
   const componentsDir = path.join(resolvedRootDir, "components");
   const dataDir = path.join(resolvedRootDir, "data");
-  const imagesDir = path.join(resolvedRootDir, "images");
+  const inputImagesDir = path.join(resolvedRootDir, "images");
   const publicDir = path.join(resolvedRootDir, "public");
+  const outputImagesDir = path.join(publicDir, "images");
   const rootDirHash = Buffer.from(resolvedRootDir).toString("base64");
 
   if (!existsSync(pagesDir)) {
@@ -42,6 +43,7 @@ export async function defineSitioBuildMetaConfig({
     pagesDir,
     componentsDir,
     dataDir,
+    outputImagesDir,
   );
 
   return {
@@ -58,7 +60,7 @@ export async function defineSitioBuildMetaConfig({
       unoVirtualLinkPlugin(),
       notFoundPlugin(),
       UnoCSS(generateUnoCSSConfig()),
-      imagesPlugin(imagesDir, path.join(publicDir, "images")),
+      imagesPlugin(inputImagesDir, outputImagesDir),
     ],
     cacheDir: path.join(__dirname, `node_modules/.vite-${rootDirHash}`),
     server: {

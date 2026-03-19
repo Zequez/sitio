@@ -22,6 +22,7 @@ export async function createLiquidPagesPlugin(
   pagesDir: string,
   componentsDir: string,
   dataDir: string,
+  imagesDir: string,
 ): Promise<[Plugin, Plugin]> {
   const liquid = new Liquid({
     root: pagesDir,
@@ -38,24 +39,87 @@ export async function createLiquidPagesPlugin(
 
   let liquidData: Record<string, unknown> = {};
   async function refreshData() {
-    if (!existsSync(dataDir)) {
-      liquidData = {};
-      return;
-    }
-
-    const yamlFiles = collectYamlFiles(dataDir);
     const nextData: Record<string, unknown> = {};
 
-    for (const yamlFile of yamlFiles) {
-      const parsedData = parse(readFileSync(yamlFile, "utf8"));
-      const relativePath = path.relative(dataDir, yamlFile);
-      const dataPath = relativePath.replace(/\.ya?ml$/i, "").split(path.sep);
+    if (existsSync(dataDir)) {
+      const yamlFiles = collectYamlFiles(dataDir);
 
-      setNestedValue(nextData, dataPath, parsedData);
+      for (const yamlFile of yamlFiles) {
+        const parsedData = parse(readFileSync(yamlFile, "utf8"));
+        const relativePath = path.relative(dataDir, yamlFile);
+        const dataPath = relativePath.replace(/\.ya?ml$/i, "").split(path.sep);
+
+        setNestedValue(nextData, dataPath, parsedData);
+      }
     }
 
+    nextData.images = await collectImagesFiles(imagesDir);
     liquidData = nextData;
   }
+
+  /* For the following directory structure:
+   *   /public/images/ezequiel/0.webp
+   *   /public/images/ezequiel/1.webp
+   *   /public/images/ezequiel/2.webp
+   *   /public/images/ezequiel/thumb_0.webp
+   *   /public/images/ezequiel/thumb_1.webp
+   *   /public/images/many/foo/0.webp
+   *   /public/images/many/foo/1.webp
+   *   /public/images/many/foo/2.webp
+   *   /public/images/many/foo/thumb_0.webp
+   *   /public/images/many/foo/thumb_1.webp
+   *   /public/images/many/bar/0.webp
+   *   /public/images/many/bar/1.webp
+   *   /public/images/many/bar/2.webp
+   *   /public/images/many/bar/thumb_0.webp
+   *   /public/images/many/bar/thumb_1.webp
+   * it should generate the following object:
+   * {
+   *  "ezequiel": {
+   *    "0": <URI encoded>,
+   *    "1": "/images/ezequiel/1.webp",
+   *    "2": "/images/ezequiel/2.webp",
+   *    "thumb_0": <URI encoded>,
+   *    "thumb_1": "/images/ezequiel/thumb_1.webp",
+   *  },
+   *  "many": {
+   *    "foo": {
+   *      "0": <URI encoded>,
+   *      "1": "/images/many/foo/1.webp",
+   *      "2": "/images/many/foo/2.webp",
+   *      "thumb_0": <URI encoded>,
+   *      "thumb_1": "/images/many/foo/thumb_1.webp",
+   *    },
+   *    "bar": {
+   *      "0": <URI encoded>,
+   *      "1": "/images/many/bar/1.webp",
+   *      "2": "/images/many/bar/2.webp",
+   *      "thumb_0": <URI encoded>,
+   *      "thumb_1": "/images/many/bar/thumb_1.webp",
+   *    },
+   *  }
+   * }
+   */
+
+  async function collectImagesFiles(imagesDir: string) {
+    const imageFiles = collectGeneratedImageFiles(imagesDir);
+    const imageMap: Record<string, unknown> = {};
+
+    for (const imageFile of imageFiles) {
+      const relativePath = path.relative(imagesDir, imageFile);
+      const imagePath = relativePath.replace(/\.webp$/i, "").split(path.sep);
+      const imageKey = imagePath[imagePath.length - 1] ?? "";
+
+      const imageValue = isLowQualityImageKey(imageKey)
+        ? asDataUri(readFileSync(imageFile))
+        : `/images/${relativePath.split(path.sep).join("/")}`;
+
+      setNestedValue(imageMap, imagePath, imageValue);
+    }
+
+    return imageMap;
+  }
+
   await refreshData();
 
   return [
@@ -91,10 +155,12 @@ export async function createLiquidPagesPlugin(
       configureServer(server) {
         const hasComponentDir = existsSync(componentsDir);
         const hasDataDir = existsSync(dataDir);
+        const hasImagesDir = existsSync(imagesDir);
 
         let reloadTimer: ReturnType<typeof setTimeout> | undefined;
         let componentsWatcher: FSWatcher | undefined;
         let dataWatcher: FSWatcher | undefined;
+        let imagesWatcher: FSWatcher | undefined;
 
         const reloadDataAndQueueReload = async () => {
           await refreshData();
@@ -142,6 +208,18 @@ export async function createLiquidPagesPlugin(
           }
         }
 
+        if (hasImagesDir) {
+          try {
+            imagesWatcher = watch(imagesDir, { recursive: true }, () => {
+              reloadDataAndQueueReload();
+            });
+          } catch {
+            imagesWatcher = watch(imagesDir, () => {
+              reloadDataAndQueueReload();
+            });
+          }
+        }
+
         server.httpServer?.once("close", () => {
           if (reloadTimer) {
             clearTimeout(reloadTimer);
@@ -149,6 +227,7 @@ export async function createLiquidPagesPlugin(
 
           componentsWatcher?.close();
           dataWatcher?.close();
+          imagesWatcher?.close();
         });
       },
     },
@@ -158,6 +237,48 @@ export async function createLiquidPagesPlugin(
 interface HtmlTemplateFile {
   filePath: string;
   name: string;
+}
+
+function isLowQualityImageKey(imageKey: string) {
+  return imageKey === "0" || imageKey.endsWith("_0") || imageKey.endsWith("-0");
+}
+
+function asDataUri(fileBuffer: Buffer) {
+  return `data:image/webp;base64,${fileBuffer.toString("base64")}`;
+}
+
+function collectGeneratedImageFiles(
+  imagesDir: string,
+  currentDir = imagesDir,
+): string[] {
+  let entries;
+
+  try {
+    entries = readdirSync(currentDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const imageFiles: string[] = [];
+
+  for (const entry of entries) {
+    if (entry.name.startsWith("_") || entry.name === ".DS_Store") {
+      continue;
+    }
+
+    const absolutePath = path.join(currentDir, entry.name);
+
+    if (entry.isDirectory()) {
+      imageFiles.push(...collectGeneratedImageFiles(imagesDir, absolutePath));
+      continue;
+    }
+
+    if (entry.isFile() && entry.name.endsWith(".webp")) {
+      imageFiles.push(absolutePath);
+    }
+  }
+
+  return imageFiles;
 }
 
 function setNestedValue(
