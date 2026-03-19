@@ -6,6 +6,7 @@ import { Liquid } from "liquidjs";
 import type { FS } from "liquidjs/dist/fs/fs";
 
 import { replaceComponents } from "../lib/htmlTagsToLiquidInclude.ts";
+import { renderMarkdownWithHtmlPassthrough } from "../lib/renderMarkdownWithHtmlPassthrough.ts";
 
 export async function createLiquidPagesPlugin(
   pagesDir: string,
@@ -31,6 +32,10 @@ export async function createLiquidPagesPlugin(
     fs: createLiquidTemplateFs(pagesDir, componentsDir),
   });
 
+  liquid.registerFilter("markdown", (input: string) => {
+    return renderMarkdownWithHtmlPassthrough(input);
+  });
+
   return [
     input,
     {
@@ -49,7 +54,6 @@ export async function createLiquidPagesPlugin(
             html,
             componentNames,
           );
-
           return liquid.parseAndRender(processedTemplate, liquidData, {
             globals: {
               page: {

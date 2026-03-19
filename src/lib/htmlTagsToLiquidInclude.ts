@@ -1,3 +1,5 @@
+import { deindentMarkdownContent } from "./deindentMarkdownContent.ts";
+
 function paramsToLiquid(params: Record<string, string>) {
   return Object.entries(params)
     .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
@@ -37,14 +39,24 @@ export function replaceComponents(html: string, tags: string[]) {
     return html;
   }
 
-  let result = html;
+  const selfClosingTagPattern = new RegExp(
+    `<(${tagPattern})\\b([^>]*)\\/>`,
+    "g",
+  );
   const blockTagPattern = new RegExp(
     `<(${tagPattern})\\b([^>]*)>([\\s\\S]*?)<\\/\\1>`,
     "g",
   );
-  const selfClosingTagPattern = new RegExp(
-    `<(${tagPattern})\\b([^>]*)\\/>`,
-    "g",
+
+  let result = html.replace(
+    selfClosingTagPattern,
+    (_, name: string, attrs: string) => {
+      const params = parseAttrs(attrs);
+      const paramString = paramsToLiquid(params);
+      const paramSuffix = paramString ? `, ${paramString}` : "";
+
+      return `{% render "component-${name}"${paramSuffix} %}`;
+    },
   );
 
   while (blockTagPattern.test(result)) {
@@ -55,25 +67,18 @@ export function replaceComponents(html: string, tags: string[]) {
         const params = parseAttrs(attrs);
         const paramString = paramsToLiquid(params);
         const contentVar = `${name}Content`;
+        const normalizedContent =
+          name === "Markdown" ? deindentMarkdownContent(content) : content;
         const contentSuffix = paramString
           ? `, ${paramString}, content: ${contentVar}`
           : `, content: ${contentVar}`;
 
-        return `{% capture ${contentVar} %}${content}{% endcapture %}{% render "component-${name}"${contentSuffix} %}`;
+        return `{% capture ${contentVar} %}${normalizedContent}{% endcapture %}{% render "component-${name}"${contentSuffix} %}`;
       },
     );
   }
 
-  return result.replace(
-    selfClosingTagPattern,
-    (_, name: string, attrs: string) => {
-      const params = parseAttrs(attrs);
-      const paramString = paramsToLiquid(params);
-      const paramSuffix = paramString ? `, ${paramString}` : "";
-
-      return `{% render "component-${name}"${paramSuffix} %}`;
-    },
-  );
+  return result;
 }
 
 function parseAttrs(attrs: string) {
