@@ -11,6 +11,7 @@ import { unoVirtualLinkPlugin } from "./src/vite-plugins/uno-virtual-link-plugin
 import UnoCSS from "unocss/vite";
 import generateUnoCSSConfig from "./unocss.build.config";
 import { existsSync } from "node:fs";
+import imagesPlugin from "./src/vite-plugins/images-plugin";
 
 export interface SitioBuildMetaConfigOptions {
   rootDir: string;
@@ -23,13 +24,14 @@ const __dirname = path.dirname(new URL(import.meta.url).pathname);
 export async function defineSitioBuildMetaConfig({
   rootDir,
   port,
-  liquidData = {},
 }: SitioBuildMetaConfigOptions): Promise<UserConfig> {
   const resolvedRootDir = path.resolve(rootDir);
   const libDir = path.join(resolvedRootDir, "lib");
   let pagesDir = path.join(resolvedRootDir, "pages");
   const componentsDir = path.join(resolvedRootDir, "components");
   const dataDir = path.join(resolvedRootDir, "data");
+  const imagesDir = path.join(resolvedRootDir, "images");
+  const publicDir = path.join(resolvedRootDir, "public");
   const rootDirHash = Buffer.from(resolvedRootDir).toString("base64");
 
   if (!existsSync(pagesDir)) {
@@ -56,6 +58,7 @@ export async function defineSitioBuildMetaConfig({
       unoVirtualLinkPlugin(),
       notFoundPlugin(),
       UnoCSS(generateUnoCSSConfig()),
+      imagesPlugin(imagesDir, path.join(publicDir, "images")),
     ],
     cacheDir: path.join(__dirname, `node_modules/.vite-${rootDirHash}`),
     server: {

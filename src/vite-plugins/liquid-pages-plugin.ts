@@ -49,9 +49,7 @@ export async function createLiquidPagesPlugin(
     for (const yamlFile of yamlFiles) {
       const parsedData = parse(readFileSync(yamlFile, "utf8"));
       const relativePath = path.relative(dataDir, yamlFile);
-      const dataPath = relativePath
-        .replace(/\.ya?ml$/i, "")
-        .split(path.sep);
+      const dataPath = relativePath.replace(/\.ya?ml$/i, "").split(path.sep);
 
       setNestedValue(nextData, dataPath, parsedData);
     }
@@ -301,7 +299,6 @@ function createLiquidTemplateFs(pagesDir: string, componentsDir: string): FS {
   function resolveFilePath(filePath: string) {
     const fileName = path.basename(filePath);
     const isComponent = fileName.startsWith("@");
-    console.log("RESOLVING FILE PATH", filePath, isComponent);
     if (isComponent) {
       const normalizedFileName = isComponent ? fileName.slice(1) : fileName;
       const componentPath = path.join(componentsDir, normalizedFileName);
@@ -309,7 +306,6 @@ function createLiquidTemplateFs(pagesDir: string, componentsDir: string): FS {
         PRESET_COMPONENTS_DIR,
         normalizedFileName,
       );
-      console.log("Is component!", componentPath, presetComponentPath);
       return existsSync(componentPath)
         ? componentPath
         : existsSync(presetComponentPath)
