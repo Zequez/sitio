@@ -1,0 +1,14 @@
+<StandardLayout
+  title="Automatic optimized images"
+  class="h-screen w-screen bg-gray-100 flex-cc flex-col"
+>
+  {{images.jardin | json}}
+  <ImgSet src="{{images.jardin}}" class="w-500px block mb-10" />
+  <ImgSet src="{{images.foo.meri}}" class="w-500px block mb-10" />
+  <ImgSet src="{{images.jardin}}" class="w-500px block mb-10" />
+  <ImgSet
+    src="{{images.jardin}}"
+    thumb="{{true}}"
+    class="w-500px block mb-10"
+  />
+</StandardLayout>

@@ -19,6 +19,10 @@ export const imagesSizes = {
   "4": 1920,
 } as const;
 
+export type ImageSet = {
+  [sizeKey in keyof typeof imagesSizes]: string;
+};
+
 const IMAGE_EXTENSIONS = new Set([
   ".jpg",
   ".jpeg",

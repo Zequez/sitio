@@ -2,7 +2,10 @@ import { deindentMarkdownContent } from "./deindentMarkdownContent.ts";
 
 function paramsToLiquid(params: Record<string, string>) {
   return Object.entries(params)
-    .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+    .map(
+      ([key, value]) =>
+        `${key}: ${value.startsWith("{{") && value.endsWith("}}") ? value.slice(2, -2) : JSON.stringify(value)}`,
+    )
     .join(", ");
 }
 

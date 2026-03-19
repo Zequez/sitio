@@ -1,0 +1,20 @@
+{% assign isThumb = false %}
+{% if thumb == true or thumb == "true" %}
+  {% assign isThumb = true %}
+{% endif %}
+
+{% assign previewKey = "0" %}
+{% assign fallbackKey = "1" %}
+
+{% if isThumb %}
+  {% assign previewKey = "thumb_0" %}
+  {% assign fallbackKey = "thumb_1" %}
+{% endif %}
+
+<img
+  src="{{ src[previewKey] | default: src[fallbackKey] }}"
+  srcset="{% if isThumb %}{{ src | thumb_srcset }}{% else %}{{ src | normal_srcset }}{% endif %}"
+  sizes="100vw"
+  {% if class %}class="{{ class }}"{% endif %}
+  {% if alt %}alt="{{ alt }}"{% endif %}
+/>

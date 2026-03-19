@@ -14,6 +14,7 @@ import { parse } from "yaml";
 
 import { replaceComponents } from "../lib/htmlTagsToLiquidInclude.ts";
 import { renderMarkdownWithHtmlPassthrough } from "../lib/renderMarkdownWithHtmlPassthrough.ts";
+import { imagesSizes, type ImageSet } from "./images-plugin.ts";
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 const PRESET_COMPONENTS_DIR = path.join(__dirname, "../components");
@@ -36,6 +37,12 @@ export async function createLiquidPagesPlugin(
   liquid.registerFilter("markdown", (input: string) => {
     return renderMarkdownWithHtmlPassthrough(input);
   });
+  liquid.registerFilter("normal_srcset", (image) => {
+    return createImageSrcset(image, false);
+  });
+  liquid.registerFilter("thumb_srcset", (image) => {
+    return createImageSrcset(image, true);
+  });
 
   let liquidData: Record<string, unknown> = {};
   async function refreshData() {
@@ -54,6 +61,7 @@ export async function createLiquidPagesPlugin(
     }
 
     nextData.images = await collectImagesFiles(imagesDir);
+    nextData.imagesSizes = imagesSizes;
     liquidData = nextData;
   }
 
@@ -237,6 +245,32 @@ export async function createLiquidPagesPlugin(
 interface HtmlTemplateFile {
   filePath: string;
   name: string;
+}
+
+function isImageSourcesMap(value: unknown): value is Record<string, string> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function createImageSrcset(image: ImageSet, thumb: boolean) {
+  if (!isImageSourcesMap(image)) {
+    return "";
+  }
+
+  return Object.entries(imagesSizes)
+    .filter(([sizeKey]) =>
+      thumb
+        ? sizeKey.startsWith("thumb_") && !isLowQualityImageKey(sizeKey)
+        : !sizeKey.startsWith("thumb_") && !isLowQualityImageKey(sizeKey),
+    )
+    .filter(
+      ([sizeKey]) =>
+        typeof image[sizeKey as keyof typeof imagesSizes] === "string",
+    )
+    .map(
+      ([sizeKey, width]) =>
+        `${image[sizeKey as keyof typeof imagesSizes]} ${width}w`,
+    )
+    .join(", ");
 }
 
 function isLowQualityImageKey(imageKey: string) {
