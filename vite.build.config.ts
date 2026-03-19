@@ -23,6 +23,7 @@ export async function defineSitioBuildMetaConfig({
   liquidData = {},
 }: SitioBuildMetaConfigOptions): Promise<UserConfig> {
   const resolvedRootDir = path.resolve(rootDir);
+  const libDir = path.join(resolvedRootDir, "lib");
   const pagesDir = path.join(resolvedRootDir, "pages");
   const componentsDir = path.join(resolvedRootDir, "components");
   const rootDirHash = Buffer.from(resolvedRootDir).toString("base64");
@@ -36,6 +37,11 @@ export async function defineSitioBuildMetaConfig({
     root: pagesDir,
     clearScreen: false,
     publicDir: path.join(resolvedRootDir, "public"),
+    resolve: {
+      alias: {
+        "/@lib": libDir,
+      },
+    },
     plugins: [
       liquidPagesPlugin,
       unoVirtualLinkPlugin(),
