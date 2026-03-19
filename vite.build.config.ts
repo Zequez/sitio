@@ -8,6 +8,7 @@ import { refreshOnComponentsChangePlugin } from "./src/vite-plugins/refresh-on-c
 import { unoVirtualLinkPlugin } from "./src/vite-plugins/uno-virtual-link-plugin";
 import UnoCSS from "unocss/vite";
 import generateUnoCSSConfig from "./unocss.build.config";
+import { existsSync } from "node:fs";
 
 export interface SitioBuildMetaConfigOptions {
   rootDir: string;
@@ -24,9 +25,13 @@ export async function defineSitioBuildMetaConfig({
 }: SitioBuildMetaConfigOptions): Promise<UserConfig> {
   const resolvedRootDir = path.resolve(rootDir);
   const libDir = path.join(resolvedRootDir, "lib");
-  const pagesDir = path.join(resolvedRootDir, "pages");
+  let pagesDir = path.join(resolvedRootDir, "pages");
   const componentsDir = path.join(resolvedRootDir, "components");
   const rootDirHash = Buffer.from(resolvedRootDir).toString("base64");
+
+  if (!existsSync(pagesDir)) {
+    pagesDir = resolvedRootDir;
+  }
 
   const [input, liquidPagesPlugin] = await createLiquidPagesPlugin(
     pagesDir,

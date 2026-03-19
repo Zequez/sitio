@@ -1,4 +1,4 @@
-import { watch, type FSWatcher } from "node:fs";
+import { watch, type FSWatcher, existsSync } from "node:fs";
 import * as path from "node:path";
 import { type Plugin } from "vite";
 
@@ -9,6 +9,10 @@ export function refreshOnComponentsChangePlugin(componentsDir: string): Plugin {
     name: "refresh-on-components-change",
     apply: "serve",
     configureServer(server) {
+      if (!existsSync(resolvedComponentsDir)) {
+        return;
+      }
+
       let reloadTimer: ReturnType<typeof setTimeout> | undefined;
       let watcher: FSWatcher | undefined;
 

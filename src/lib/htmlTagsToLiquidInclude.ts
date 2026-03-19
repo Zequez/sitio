@@ -55,7 +55,7 @@ export function replaceComponents(html: string, tags: string[]) {
       const paramString = paramsToLiquid(params);
       const paramSuffix = paramString ? `, ${paramString}` : "";
 
-      return `{% render "component-${name}"${paramSuffix} %}`;
+      return `{% render "@${name}"${paramSuffix} %}`;
     },
   );
 
@@ -73,7 +73,7 @@ export function replaceComponents(html: string, tags: string[]) {
           ? `, ${paramString}, content: ${contentVar}`
           : `, content: ${contentVar}`;
 
-        return `{% capture ${contentVar} %}${normalizedContent}{% endcapture %}{% render "component-${name}"${contentSuffix} %}`;
+        return `{% capture ${contentVar} %}${normalizedContent}{% endcapture %}{% render "@${name}"${contentSuffix} %}`;
       },
     );
   }

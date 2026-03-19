@@ -8,6 +8,9 @@ import type { FS } from "liquidjs/dist/fs/fs";
 import { replaceComponents } from "../lib/htmlTagsToLiquidInclude.ts";
 import { renderMarkdownWithHtmlPassthrough } from "../lib/renderMarkdownWithHtmlPassthrough.ts";
 
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
+const PRESET_COMPONENTS_DIR = path.join(__dirname, "../components");
+
 export async function createLiquidPagesPlugin(
   pagesDir: string,
   componentsDir: string,
@@ -132,20 +135,39 @@ function collectHtmlEntrypoints(pagesDir: string) {
 }
 
 function collectComponentsNames(componentsDir: string) {
+  const presetComponentsFiles = collectHtmlFiles(PRESET_COMPONENTS_DIR);
   const componentFiles = collectHtmlFiles(componentsDir);
   const componentNames = componentFiles.map(({ name }) =>
     toComponentName(name),
   );
+  const presetComponentsNames = presetComponentsFiles.map(({ name }) =>
+    toComponentName(name),
+  );
 
-  return componentNames;
+  return componentNames.concat(presetComponentsNames);
 }
 
 function createLiquidTemplateFs(pagesDir: string, componentsDir: string): FS {
-  function rewriteAsComponentPath(filePath: string): string | null {
-    const templateKey = path.basename(filePath);
-    return templateKey.startsWith("component-")
-      ? path.join(componentsDir, templateKey.replace(/^component\-/, ""))
-      : null;
+  function resolveFilePath(filePath: string) {
+    const fileName = path.basename(filePath);
+    const isComponent = fileName.startsWith("@");
+    console.log("RESOLVING FILE PATH", filePath, isComponent);
+    if (isComponent) {
+      const normalizedFileName = isComponent ? fileName.slice(1) : fileName;
+      const componentPath = path.join(componentsDir, normalizedFileName);
+      const presetComponentPath = path.join(
+        PRESET_COMPONENTS_DIR,
+        normalizedFileName,
+      );
+      console.log("Is component!", componentPath, presetComponentPath);
+      return existsSync(componentPath)
+        ? componentPath
+        : existsSync(presetComponentPath)
+          ? presetComponentPath
+          : undefined;
+    } else {
+      return existsSync(filePath) ? filePath : undefined;
+    }
   }
 
   function readTemplateSync(filePath: string) {
@@ -156,39 +178,56 @@ function createLiquidTemplateFs(pagesDir: string, componentsDir: string): FS {
   const debug = false;
   const log = debug ? console.log : () => {};
 
+  function noExistGuard(
+    originalFilePath: string,
+    resolvedFilePath: string | undefined,
+  ): string {
+    if (!resolvedFilePath) {
+      throw new Error(
+        `ENOENT: no such file or directory, open '${originalFilePath}'`,
+      );
+    }
+    return resolvedFilePath!;
+  }
+
+  // All the file paths are absolute and on the /pages directory
+  // Components are prefixed with @ and should be rewrited, with the @ removed and
+  // the path pointing to the /components directory instead
+
   return {
     sep: path.sep,
     async exists(filePath) {
       log("exists", filePath);
-      const componentTemplatePath = rewriteAsComponentPath(filePath);
-      return existsSync(componentTemplatePath || filePath);
+      return !!resolveFilePath(filePath);
     },
     existsSync(filePath) {
       log("existsSync", filePath);
-      const componentTemplatePath = rewriteAsComponentPath(filePath);
-      return existsSync(componentTemplatePath || filePath);
+      return !!resolveFilePath(filePath);
     },
     async readFile(filePath) {
       log("readFile", filePath);
-      const componentTemplatePath = rewriteAsComponentPath(filePath);
-      return readTemplateSync(componentTemplatePath || filePath);
+      return readTemplateSync(
+        noExistGuard(filePath, resolveFilePath(filePath)),
+      );
     },
     readFileSync(filePath) {
       log("readFileSync", filePath);
-      const componentTemplatePath = rewriteAsComponentPath(filePath);
-      return readTemplateSync(componentTemplatePath || filePath);
+      return readTemplateSync(
+        noExistGuard(filePath, resolveFilePath(filePath)),
+      );
     },
     resolve(dir, file, ext) {
       log("resolve", dir, file, ext);
       const fullPath = path.join(dir, `${file}${ext}`);
-      return rewriteAsComponentPath(fullPath) || fullPath;
+      return resolveFilePath(fullPath) || fullPath;
     },
     contains(root, file) {
       log("contains", root, file);
       return true;
     },
-    dirname(file) {
-      return path.dirname(file);
+    dirname(filePath) {
+      const resolvedPath = resolveFilePath(filePath) || filePath;
+      return path.dirname(resolvedPath);
     },
   };
 }
