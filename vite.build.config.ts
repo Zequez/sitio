@@ -2,9 +2,11 @@ import * as path from "node:path";
 
 import { type UserConfig } from "vite";
 
-import { createLiquidPagesPlugin } from "./src/vite-plugins/liquid-pages-plugin";
+import {
+  createLiquidPagesPlugin,
+  collectHtmlEntrypoints,
+} from "./src/vite-plugins/liquid-pages-plugin";
 import { notFoundPlugin } from "./src/vite-plugins/not-found-plugin";
-import { refreshOnComponentsChangePlugin } from "./src/vite-plugins/refresh-on-components-change-plugin";
 import { unoVirtualLinkPlugin } from "./src/vite-plugins/uno-virtual-link-plugin";
 import UnoCSS from "unocss/vite";
 import generateUnoCSSConfig from "./unocss.build.config";
@@ -27,15 +29,17 @@ export async function defineSitioBuildMetaConfig({
   const libDir = path.join(resolvedRootDir, "lib");
   let pagesDir = path.join(resolvedRootDir, "pages");
   const componentsDir = path.join(resolvedRootDir, "components");
+  const dataDir = path.join(resolvedRootDir, "data");
   const rootDirHash = Buffer.from(resolvedRootDir).toString("base64");
 
   if (!existsSync(pagesDir)) {
     pagesDir = resolvedRootDir;
   }
 
-  const [input, liquidPagesPlugin] = await createLiquidPagesPlugin(
+  const liquidPagesPlugin = await createLiquidPagesPlugin(
     pagesDir,
     componentsDir,
+    dataDir,
   );
 
   return {
@@ -50,7 +54,6 @@ export async function defineSitioBuildMetaConfig({
     plugins: [
       liquidPagesPlugin,
       unoVirtualLinkPlugin(),
-      refreshOnComponentsChangePlugin(componentsDir),
       notFoundPlugin(),
       UnoCSS(generateUnoCSSConfig()),
     ],
@@ -63,7 +66,7 @@ export async function defineSitioBuildMetaConfig({
     },
     build: {
       rollupOptions: {
-        input, // This is just for build, so does not matter if it doesn't regenrate on server restart
+        input: collectHtmlEntrypoints(pagesDir), // This is just for build, so does not matter if it doesn't regenrate on server restart
       },
     },
   };

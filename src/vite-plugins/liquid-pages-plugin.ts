@@ -1,9 +1,16 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  watch,
+  type FSWatcher,
+} from "node:fs";
 import * as path from "node:path";
 
 import { type Plugin } from "vite";
 import { Liquid } from "liquidjs";
 import type { FS } from "liquidjs/dist/fs/fs";
+import { parse } from "yaml";
 
 import { replaceComponents } from "../lib/htmlTagsToLiquidInclude.ts";
 import { renderMarkdownWithHtmlPassthrough } from "../lib/renderMarkdownWithHtmlPassthrough.ts";
@@ -14,18 +21,8 @@ const PRESET_COMPONENTS_DIR = path.join(__dirname, "../components");
 export async function createLiquidPagesPlugin(
   pagesDir: string,
   componentsDir: string,
-): Promise<
-  [
-    {
-      [k: string]: string;
-    },
-    Plugin,
-  ]
-> {
-  const input = await collectHtmlEntrypoints(pagesDir);
-
-  const liquidData = {};
-
+  dataDir: string,
+): Promise<[Plugin, Plugin]> {
   const liquid = new Liquid({
     root: pagesDir,
     partials: pagesDir,
@@ -39,10 +36,33 @@ export async function createLiquidPagesPlugin(
     return renderMarkdownWithHtmlPassthrough(input);
   });
 
+  let liquidData: Record<string, unknown> = {};
+  async function refreshData() {
+    if (!existsSync(dataDir)) {
+      liquidData = {};
+      return;
+    }
+
+    const yamlFiles = collectYamlFiles(dataDir);
+    const nextData: Record<string, unknown> = {};
+
+    for (const yamlFile of yamlFiles) {
+      const parsedData = parse(readFileSync(yamlFile, "utf8"));
+      const relativePath = path.relative(dataDir, yamlFile);
+      const dataPath = relativePath
+        .replace(/\.ya?ml$/i, "")
+        .split(path.sep);
+
+      setNestedValue(nextData, dataPath, parsedData);
+    }
+
+    liquidData = nextData;
+  }
+  await refreshData();
+
   return [
-    input,
     {
-      name: "sitio-liquid-pages",
+      name: "liquid-pages-plugin",
       enforce: "pre",
       transformIndexHtml: {
         order: "pre",
@@ -67,12 +87,142 @@ export async function createLiquidPagesPlugin(
         },
       },
     },
+    {
+      name: "liquid-pages-refresher",
+      apply: "serve",
+      configureServer(server) {
+        const hasComponentDir = existsSync(componentsDir);
+        const hasDataDir = existsSync(dataDir);
+
+        let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+        let componentsWatcher: FSWatcher | undefined;
+        let dataWatcher: FSWatcher | undefined;
+
+        const reloadDataAndQueueReload = async () => {
+          await refreshData();
+          queueReload();
+        };
+        const queueReload = () => {
+          if (reloadTimer) {
+            clearTimeout(reloadTimer);
+          }
+
+          reloadTimer = setTimeout(() => {
+            reloadTimer = undefined;
+            server.ws.send({
+              type: "full-reload",
+              path: "*",
+            });
+          }, 50);
+        };
+
+        if (hasComponentDir) {
+          try {
+            componentsWatcher = watch(
+              componentsDir,
+              { recursive: true },
+              () => {
+                queueReload();
+              },
+            );
+          } catch {
+            componentsWatcher = watch(componentsDir, () => {
+              queueReload();
+            });
+          }
+        }
+
+        if (hasDataDir) {
+          try {
+            dataWatcher = watch(dataDir, { recursive: true }, () => {
+              reloadDataAndQueueReload();
+            });
+          } catch {
+            dataWatcher = watch(dataDir, () => {
+              reloadDataAndQueueReload();
+            });
+          }
+        }
+
+        server.httpServer?.once("close", () => {
+          if (reloadTimer) {
+            clearTimeout(reloadTimer);
+          }
+
+          componentsWatcher?.close();
+          dataWatcher?.close();
+        });
+      },
+    },
   ];
 }
 
 interface HtmlTemplateFile {
   filePath: string;
   name: string;
+}
+
+function setNestedValue(
+  target: Record<string, unknown>,
+  pathSegments: string[],
+  value: unknown,
+) {
+  let current: Record<string, unknown> = target;
+
+  for (const segment of pathSegments.slice(0, -1)) {
+    const existingValue = current[segment];
+
+    if (
+      existingValue === null ||
+      typeof existingValue !== "object" ||
+      Array.isArray(existingValue)
+    ) {
+      current[segment] = {};
+    }
+
+    current = current[segment] as Record<string, unknown>;
+  }
+
+  const lastSegment = pathSegments[pathSegments.length - 1];
+
+  if (lastSegment) {
+    current[lastSegment] = value;
+  }
+}
+
+function collectYamlFiles(dataDir: string, currentDir = dataDir): string[] {
+  let entries;
+
+  try {
+    entries = readdirSync(currentDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const yamlFiles: string[] = [];
+
+  for (const entry of entries) {
+    if (entry.name.startsWith("_")) {
+      continue;
+    }
+
+    const absolutePath = path.join(currentDir, entry.name);
+
+    if (entry.isDirectory()) {
+      yamlFiles.push(...collectYamlFiles(dataDir, absolutePath));
+      continue;
+    }
+
+    if (!entry.isFile()) {
+      continue;
+    }
+
+    if (entry.name.endsWith(".yml") || entry.name.endsWith(".yaml")) {
+      yamlFiles.push(absolutePath);
+    }
+  }
+
+  return yamlFiles;
 }
 
 function toComponentName(relativePath: string) {
@@ -123,7 +273,7 @@ function collectHtmlFiles(
   return htmlFiles;
 }
 
-function collectHtmlEntrypoints(pagesDir: string) {
+export function collectHtmlEntrypoints(pagesDir: string) {
   const pageFiles = collectHtmlFiles(pagesDir);
 
   return Object.fromEntries(

@@ -1,0 +1,10 @@
+mission: "Make the computer do the thing"
+coffee_level: dangerously_low
+bugs_found_today: 47
+bugs_fixed_today: 1
+confidence_in_fix: "extremely_high"
+actual_problem: "missing_semicolon"
+time_spent_debugging: "3h42m"
+solution_found_on: "random_stackoverflow_answer_from_2011"
+commit_message: "fixed stuff"
+deployment_strategy: "hope_and_pray"
