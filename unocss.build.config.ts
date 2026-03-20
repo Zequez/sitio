@@ -18,19 +18,19 @@ const FLEX_ALIGNS: Record<string, string> = {
 import presetAttributify from "@unocss/preset-attributify";
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
-function getFontsCacheDir(rootDirHash: string) {
+function getFontsCacheDir(workDirHash: string) {
   return path.join(
     __dirname,
-    `node_modules/.cache/unocss/fonts/${rootDirHash}`,
+    `node_modules/.cache/unocss/fonts/${workDirHash}`,
   );
 }
 
-export function getFontsDir(rootDirHash: string) {
-  return path.join(getFontsCacheDir(rootDirHash), "fonts");
+export function getFontsDir(workDirHash: string) {
+  return path.join(getFontsCacheDir(workDirHash), "fonts");
 }
 
-export default (rootDir: string, rootDirHash: string) => {
-  const fontConfigFilePath = path.join(rootDir, "fonts.yml");
+export default (workDir: string, workDirHash: string) => {
+  const fontConfigFilePath = path.join(workDir, "fonts.yml");
   const fonts = existsSync(fontConfigFilePath)
     ? parse(readFileSync(fontConfigFilePath, "utf8"))
     : {};
@@ -55,10 +55,10 @@ export default (rootDir: string, rootDirHash: string) => {
 
         processors: createLocalFontProcessor({
           // Directory to cache the fonts
-          cacheDir: getFontsCacheDir(rootDirHash),
+          cacheDir: getFontsCacheDir(workDirHash),
 
           // Directory to save the fonts assets
-          fontAssetsDir: getFontsDir(rootDirHash),
+          fontAssetsDir: getFontsDir(workDirHash),
 
           fontServeBaseUrl: "/@fonts",
         }),

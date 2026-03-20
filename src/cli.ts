@@ -27,9 +27,8 @@ yargs(hideBin(process.argv))
   .command("dev", "Starts sitio in development mode", async (yargs) => {
     console.log(`Sitio starting @ localhost:${PORT}`);
     const viteConfig = await buildViteConfig({
-      rootDir: workDir,
+      workDir: workDir,
       port: PORT,
-      liquidData: { potato: "potatoooooo" },
     });
 
     console.log("Got config; starting server.");

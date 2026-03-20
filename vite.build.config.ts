@@ -12,9 +12,10 @@ import UnoCSS from "unocss/vite";
 import generateUnoCSSConfig, { getFontsDir } from "./unocss.build.config";
 import { existsSync } from "node:fs";
 import imagesPlugin from "./src/vite-plugins/images-plugin";
+import { restartOnConfigChangePlugin } from "./src/vite-plugins/restart-on-config-change-plugin";
 
 export interface SitioBuildMetaConfigOptions {
-  rootDir: string;
+  workDir: string;
   port: number;
   liquidData?: Record<string, unknown>;
 }
@@ -22,21 +23,21 @@ export interface SitioBuildMetaConfigOptions {
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
 export async function defineSitioBuildMetaConfig({
-  rootDir,
+  workDir: workDir,
   port,
 }: SitioBuildMetaConfigOptions): Promise<UserConfig> {
-  const resolvedRootDir = path.resolve(rootDir);
-  const libDir = path.join(resolvedRootDir, "lib");
-  let pagesDir = path.join(resolvedRootDir, "pages");
-  const componentsDir = path.join(resolvedRootDir, "components");
-  const dataDir = path.join(resolvedRootDir, "data");
-  const inputImagesDir = path.join(resolvedRootDir, "images");
-  const publicDir = path.join(resolvedRootDir, "public");
+  const resolvedWorkDir = path.resolve(workDir);
+  const libDir = path.join(resolvedWorkDir, "lib");
+  let pagesDir = path.join(resolvedWorkDir, "pages");
+  const componentsDir = path.join(resolvedWorkDir, "components");
+  const dataDir = path.join(resolvedWorkDir, "data");
+  const inputImagesDir = path.join(resolvedWorkDir, "images");
+  const publicDir = path.join(resolvedWorkDir, "public");
   const outputImagesDir = path.join(publicDir, "images");
-  const rootDirHash = Buffer.from(resolvedRootDir).toString("base64");
+  const workDirHash = Buffer.from(resolvedWorkDir).toString("base64");
 
   if (!existsSync(pagesDir)) {
-    pagesDir = resolvedRootDir;
+    pagesDir = resolvedWorkDir;
   }
 
   const liquidPagesPlugin = await createLiquidPagesPlugin(
@@ -49,25 +50,26 @@ export async function defineSitioBuildMetaConfig({
   return {
     root: pagesDir,
     clearScreen: false,
-    publicDir: path.join(resolvedRootDir, "public"),
+    publicDir: path.join(resolvedWorkDir, "public"),
     resolve: {
       alias: {
         "/@lib": libDir,
-        "/@fonts": getFontsDir(rootDirHash),
+        "/@fonts": getFontsDir(workDirHash),
       },
     },
     plugins: [
       liquidPagesPlugin,
       unoVirtualLinkPlugin(),
       notFoundPlugin(),
-      UnoCSS(generateUnoCSSConfig(rootDir, rootDirHash)),
+      UnoCSS(generateUnoCSSConfig(workDir, workDirHash)),
       imagesPlugin(inputImagesDir, outputImagesDir),
+      restartOnConfigChangePlugin(workDir),
     ],
-    cacheDir: path.join(__dirname, `node_modules/.vite-${rootDirHash}`),
+    cacheDir: path.join(__dirname, `node_modules/.vite-${workDirHash}`),
     server: {
       port,
       fs: {
-        allow: [resolvedRootDir, componentsDir, getFontsDir(rootDirHash)],
+        allow: [resolvedWorkDir, componentsDir, getFontsDir(workDirHash)],
       },
     },
     build: {

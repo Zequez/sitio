@@ -386,8 +386,8 @@ function toComponentName(relativePath: string) {
 }
 
 function collectHtmlFiles(
-  rootDir: string,
-  currentDir = rootDir,
+  targetDir: string,
+  currentDir = targetDir,
 ): HtmlTemplateFile[] {
   let entries;
 
@@ -407,7 +407,7 @@ function collectHtmlFiles(
     const absolutePath = path.join(currentDir, entry.name);
 
     if (entry.isDirectory()) {
-      htmlFiles.push(...collectHtmlFiles(rootDir, absolutePath));
+      htmlFiles.push(...collectHtmlFiles(targetDir, absolutePath));
       continue;
     }
 
@@ -415,7 +415,7 @@ function collectHtmlFiles(
       continue;
     }
 
-    const relativePath = path.relative(rootDir, absolutePath);
+    const relativePath = path.relative(targetDir, absolutePath);
 
     htmlFiles.push({
       filePath: absolutePath,
