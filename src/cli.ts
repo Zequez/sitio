@@ -114,7 +114,7 @@ yargs(argv.length === 0 ? ["dev"] : argv)
       port: PORT,
       buildMode: true,
     });
-    viteBuild(viteConfig);
+    await viteBuild(viteConfig);
   })
   .command(
     "preview",

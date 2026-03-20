@@ -247,6 +247,13 @@ interface HtmlTemplateFile {
   name: string;
 }
 
+const DEFAULT_IGNORED_HTML_DIRS = new Set([
+  ".git",
+  "dist",
+  "node_modules",
+  "public",
+]);
+
 function isImageSourcesMap(value: unknown): value is Record<string, string> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -388,6 +395,7 @@ function toComponentName(relativePath: string) {
 function collectHtmlFiles(
   targetDir: string,
   currentDir = targetDir,
+  ignoredDirectoryNames = DEFAULT_IGNORED_HTML_DIRS,
 ): HtmlTemplateFile[] {
   let entries;
 
@@ -400,14 +408,21 @@ function collectHtmlFiles(
   const htmlFiles: HtmlTemplateFile[] = [];
 
   for (const entry of entries) {
-    if (entry.name.startsWith("_")) {
+    if (
+      entry.name.startsWith("_") ||
+      (entry.isDirectory() &&
+        (entry.name.startsWith(".") ||
+          ignoredDirectoryNames.has(entry.name)))
+    ) {
       continue;
     }
 
     const absolutePath = path.join(currentDir, entry.name);
 
     if (entry.isDirectory()) {
-      htmlFiles.push(...collectHtmlFiles(targetDir, absolutePath));
+      htmlFiles.push(
+        ...collectHtmlFiles(targetDir, absolutePath, ignoredDirectoryNames),
+      );
       continue;
     }
 
@@ -426,8 +441,15 @@ function collectHtmlFiles(
   return htmlFiles;
 }
 
-export function collectHtmlEntrypoints(pagesDir: string) {
-  const pageFiles = collectHtmlFiles(pagesDir);
+export function collectHtmlEntrypoints(
+  pagesDir: string,
+  ignoredDirectoryNames?: Set<string>,
+) {
+  const pageFiles = collectHtmlFiles(
+    pagesDir,
+    pagesDir,
+    ignoredDirectoryNames,
+  );
 
   return Object.fromEntries(
     pageFiles.map(({ filePath, name }) => [
