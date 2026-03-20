@@ -1,9 +1,12 @@
-import transformerVariantGroup from "@unocss/transformer-variant-group";
+import { readFileSync, existsSync } from "fs";
+import path from "path";
+import { parse } from "yaml";
+
 import { defineConfig, presetWind4, transformerDirectives } from "unocss";
+import transformerVariantGroup from "@unocss/transformer-variant-group";
 import presetIcons from "@unocss/preset-icons";
 import presetWebFonts from "@unocss/preset-web-fonts";
 import { createLocalFontProcessor } from "@unocss/preset-web-fonts/local";
-import path from "path";
 
 const FLEX_ALIGNS: Record<string, string> = {
   c: "center",
@@ -26,15 +29,11 @@ export function getFontsDir(rootDirHash: string) {
   return path.join(getFontsCacheDir(rootDirHash), "fonts");
 }
 
-export default (
-  rootDir: string,
-  rootDirHash: string,
-  fonts: { [key: string]: string },
-) => {
-  const FONTS_CACHE_DIR = path.join(
-    __dirname,
-    `node_modules/.cache/unocss/fonts/${rootDirHash}`,
-  );
+export default (rootDir: string, rootDirHash: string) => {
+  const fontConfigFilePath = path.join(rootDir, "fonts.yml");
+  const fonts = existsSync(fontConfigFilePath)
+    ? parse(readFileSync(fontConfigFilePath, "utf8"))
+    : {};
 
   return defineConfig({
     presets: [

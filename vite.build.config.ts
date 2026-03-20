@@ -21,12 +21,6 @@ export interface SitioBuildMetaConfigOptions {
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
-const DEFAULT_FONTS = {
-  sans: "Arimo:400,700",
-  serif: "Andada Pro:400,700",
-  mono: "Fira Code:400,700",
-};
-
 export async function defineSitioBuildMetaConfig({
   rootDir,
   port,
@@ -66,7 +60,7 @@ export async function defineSitioBuildMetaConfig({
       liquidPagesPlugin,
       unoVirtualLinkPlugin(),
       notFoundPlugin(),
-      UnoCSS(generateUnoCSSConfig(rootDir, rootDirHash, DEFAULT_FONTS)),
+      UnoCSS(generateUnoCSSConfig(rootDir, rootDirHash)),
       imagesPlugin(inputImagesDir, outputImagesDir),
     ],
     cacheDir: path.join(__dirname, `node_modules/.vite-${rootDirHash}`),
