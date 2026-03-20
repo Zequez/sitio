@@ -1,4 +1,4 @@
-import { watch, type FSWatcher } from "node:fs";
+import { existsSync, watch, type FSWatcher } from "node:fs";
 import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import * as path from "node:path";
 
@@ -234,6 +234,7 @@ export default function imagesPlugin(
   outputDir: string,
 ): Plugin {
   let syncPromise: Promise<void> = Promise.resolve();
+  const imagesParentDir = path.dirname(imagesDir);
 
   const queueSync = () => {
     syncPromise = syncPromise
@@ -248,22 +249,57 @@ export default function imagesPlugin(
       await queueSync();
     },
     configureServer(server) {
-      let watcher: FSWatcher | undefined;
+      let imagesWatcher: FSWatcher | undefined;
+      let parentWatcher: FSWatcher | undefined;
+
+      const closeImagesWatcher = () => {
+        imagesWatcher?.close();
+        imagesWatcher = undefined;
+      };
+
+      const attachImagesWatcher = () => {
+        if (imagesWatcher || !existsSync(imagesDir)) {
+          return;
+        }
+
+        try {
+          imagesWatcher = watch(imagesDir, { recursive: true }, () => {
+            void queueSync();
+          });
+        } catch {
+          imagesWatcher = watch(imagesDir, () => {
+            void queueSync();
+          });
+        }
+      };
+
+      const refreshImagesWatcher = () => {
+        if (existsSync(imagesDir)) {
+          attachImagesWatcher();
+          return;
+        }
+
+        closeImagesWatcher();
+      };
 
       void queueSync();
+      refreshImagesWatcher();
 
       try {
-        watcher = watch(imagesDir, { recursive: true }, () => {
+        parentWatcher = watch(imagesParentDir, () => {
+          refreshImagesWatcher();
           void queueSync();
         });
       } catch {
-        watcher = watch(imagesDir, () => {
+        parentWatcher = watch(imagesParentDir, () => {
+          refreshImagesWatcher();
           void queueSync();
         });
       }
 
       server.httpServer?.once("close", () => {
-        watcher?.close();
+        closeImagesWatcher();
+        parentWatcher?.close();
       });
     },
   };
