@@ -17,8 +17,8 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@iconify-json/fa6-brands": "^1.2.6",
-    "@iconify-json/fa6-solid": "^1.2.4",
+    "@iconify-json/fa7-brands": "^1.2.2",
+    "@iconify-json/fa7-solid": "^1.2.4",
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@types/yargs": "^17.0.35",
     "chalk": "^5.6.2",

@@ -1,8 +1,9 @@
 import transformerVariantGroup from "@unocss/transformer-variant-group";
-
 import { defineConfig, presetWind4, transformerDirectives } from "unocss";
-
 import presetIcons from "@unocss/preset-icons";
+import presetWebFonts from "@unocss/preset-web-fonts";
+import { createLocalFontProcessor } from "@unocss/preset-web-fonts/local";
+import path from "path";
 
 const FLEX_ALIGNS: Record<string, string> = {
   c: "center",
@@ -12,36 +13,57 @@ const FLEX_ALIGNS: Record<string, string> = {
 };
 
 import presetAttributify from "@unocss/preset-attributify";
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
-export default () =>
-  defineConfig({
+function getFontsCacheDir(rootDirHash: string) {
+  return path.join(
+    __dirname,
+    `node_modules/.cache/unocss/fonts/${rootDirHash}`,
+  );
+}
+
+export function getFontsDir(rootDirHash: string) {
+  return path.join(getFontsCacheDir(rootDirHash), "fonts");
+}
+
+export default (
+  rootDir: string,
+  rootDirHash: string,
+  fonts: { [key: string]: string },
+) => {
+  const FONTS_CACHE_DIR = path.join(
+    __dirname,
+    `node_modules/.cache/unocss/fonts/${rootDirHash}`,
+  );
+
+  return defineConfig({
     presets: [
       presetIcons({
         collections: {
           fa: () =>
-            import("@iconify-json/fa6-solid/icons.json").then((i) => i.default),
+            import("@iconify-json/fa7-solid/icons.json").then((i) => i.default),
           "fa-brands": () =>
-            import("@iconify-json/fa6-brands/icons.json").then(
+            import("@iconify-json/fa7-brands/icons.json").then(
               (i) => i.default,
             ),
         },
       }),
       presetWind4(),
       presetAttributify(),
-      // presetWebFonts({
-      //   provider: 'bunny', // default provider
-      //   fonts: resolvedFonts,
+      presetWebFonts({
+        provider: "google", // default provider
+        fonts: fonts,
 
-      //   processors: createLocalFontProcessor({
-      //     // Directory to cache the fonts
-      //     cacheDir: `node_modules/.cache/unocss/fonts/${config.repo}`,
+        processors: createLocalFontProcessor({
+          // Directory to cache the fonts
+          cacheDir: getFontsCacheDir(rootDirHash),
 
-      //     // Directory to save the fonts assets
-      //     fontAssetsDir: './assets/fonts',
+          // Directory to save the fonts assets
+          fontAssetsDir: getFontsDir(rootDirHash),
 
-      //     fontServeBaseUrl: '/fonts',
-      //   }),
-      // }),
+          fontServeBaseUrl: "/@fonts",
+        }),
+      }),
     ],
     transformers: [transformerVariantGroup(), transformerDirectives()],
     rules: [
@@ -135,3 +157,4 @@ export default () =>
       };
     },
   });
+};

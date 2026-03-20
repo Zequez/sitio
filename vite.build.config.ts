@@ -9,7 +9,7 @@ import {
 import { notFoundPlugin } from "./src/vite-plugins/not-found-plugin";
 import { unoVirtualLinkPlugin } from "./src/vite-plugins/uno-virtual-link-plugin";
 import UnoCSS from "unocss/vite";
-import generateUnoCSSConfig from "./unocss.build.config";
+import generateUnoCSSConfig, { getFontsDir } from "./unocss.build.config";
 import { existsSync } from "node:fs";
 import imagesPlugin from "./src/vite-plugins/images-plugin";
 
@@ -20,6 +20,12 @@ export interface SitioBuildMetaConfigOptions {
 }
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
+
+const DEFAULT_FONTS = {
+  sans: "Arimo:400,700",
+  serif: "Andada Pro:400,700",
+  mono: "Fira Code:400,700",
+};
 
 export async function defineSitioBuildMetaConfig({
   rootDir,
@@ -53,20 +59,21 @@ export async function defineSitioBuildMetaConfig({
     resolve: {
       alias: {
         "/@lib": libDir,
+        "/@fonts": getFontsDir(rootDirHash),
       },
     },
     plugins: [
       liquidPagesPlugin,
       unoVirtualLinkPlugin(),
       notFoundPlugin(),
-      UnoCSS(generateUnoCSSConfig()),
+      UnoCSS(generateUnoCSSConfig(rootDir, rootDirHash, DEFAULT_FONTS)),
       imagesPlugin(inputImagesDir, outputImagesDir),
     ],
     cacheDir: path.join(__dirname, `node_modules/.vite-${rootDirHash}`),
     server: {
       port,
       fs: {
-        allow: [resolvedRootDir, componentsDir],
+        allow: [resolvedRootDir, componentsDir, getFontsDir(rootDirHash)],
       },
     },
     build: {

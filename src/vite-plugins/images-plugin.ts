@@ -182,10 +182,16 @@ async function processImage(
 }
 
 async function syncImages(imagesDir: string, outputDir: string): Promise<void> {
+  const sourceImages = await collectImageFiles(imagesDir);
+
+  if (sourceImages.length === 0) {
+    rm(outputDir, { recursive: true, force: true });
+    return;
+  }
+
   await mkdir(path.dirname(outputDir), { recursive: true });
   await mkdir(outputDir, { recursive: true });
 
-  const sourceImages = await collectImageFiles(imagesDir);
   const expectedOutputs = new Set<string>();
 
   for (const sourceImage of sourceImages) {
