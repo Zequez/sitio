@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 
+import { watch, type FSWatcher } from "node:fs";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import path from "path";
 
 import { portForName } from "./lib/portForName.ts";
-
-import buildViteConfig from "../vite.build.config.ts";
-import { createServer } from "vite";
+import { spawnViteServer } from "./lib/vite-server-spawner.ts";
 
 const workDir = process.cwd();
 
@@ -26,30 +26,56 @@ yargs(hideBin(process.argv))
   })
   .command("dev", "Starts sitio in development mode", async (yargs) => {
     console.log(`Sitio starting @ localhost:${PORT}`);
-    const viteConfig = await buildViteConfig({
-      workDir: workDir,
-      port: PORT,
-    });
 
-    console.log("Got config; starting server.");
-    // console.log(JSON.stringify(viteConfig, null, 2));
-    const server = await createServer(viteConfig);
-    await server.listen();
-    server.printUrls();
-    server.bindCLIShortcuts({ print: true });
+    const filesToWatch = [path.join(workDir, "fonts.yml")];
+    const watchedDirectories = new Map<string, Set<string>>();
+    const watchers: FSWatcher[] = [];
+    const viteServer = spawnViteServer(workDir, PORT);
+    let restartTimer: ReturnType<typeof setTimeout> | undefined;
+    let isRestarting = false;
 
-    // printTitle(`Sitio started... http://localhost:${PORT}`, chalk.yellowBright);
-    // const { reloadPage } = createServer(`${workDir}/dist`, PORT);
-    // async function buildAndReload() {
-    //   await build();
-    //   reloadPage();
-    // }
-    // watch(`${workDir}/pages`, buildAndReload);
-    // watch(`${workDir}/layouts`, buildAndReload);
-    // watch(`${workDir}/components`, buildAndReload);
-    // watch(`${workDir}/assets`, buildAndReload);
-    // watch(`${workDir}/scripts`, buildAndReload);
-    // build();
+    for (const filePath of filesToWatch) {
+      const directory = path.dirname(filePath);
+      const watchedFiles =
+        watchedDirectories.get(directory) ?? new Set<string>();
+
+      watchedFiles.add(path.basename(filePath));
+      watchedDirectories.set(directory, watchedFiles);
+    }
+
+    async function restart() {
+      if (isRestarting) {
+        return;
+      }
+
+      isRestarting = true;
+      console.log("Restarting server.");
+
+      try {
+        await viteServer.restart();
+      } finally {
+        isRestarting = false;
+      }
+    }
+
+    for (const [directory, watchedFiles] of watchedDirectories) {
+      const watcher = watch(directory, (_eventType, filename) => {
+        if (!filename || !watchedFiles.has(filename.toString())) {
+          return;
+        }
+
+        if (restartTimer) {
+          clearTimeout(restartTimer);
+        }
+
+        restartTimer = setTimeout(() => {
+          restartTimer = undefined;
+          void restart();
+        }, 50);
+      });
+
+      watchers.push(watcher);
+    }
   })
   .demandCommand(1, "")
   .help()

@@ -4,8 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun run src/dev.ts",
-    "start": "bun run index.ts"
+    "dev": "sitio dev"
   },
   "bin": {
     "sitio": "./src/cli.ts"

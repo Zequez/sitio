@@ -12,7 +12,6 @@ import UnoCSS from "unocss/vite";
 import generateUnoCSSConfig, { getFontsDir } from "./unocss.build.config";
 import { existsSync } from "node:fs";
 import imagesPlugin from "./src/vite-plugins/images-plugin";
-import { restartOnConfigChangePlugin } from "./src/vite-plugins/restart-on-config-change-plugin";
 
 export interface SitioBuildMetaConfigOptions {
   workDir: string;
@@ -63,7 +62,6 @@ export async function defineSitioBuildMetaConfig({
       notFoundPlugin(),
       UnoCSS(generateUnoCSSConfig(workDir, workDirHash)),
       imagesPlugin(inputImagesDir, outputImagesDir),
-      restartOnConfigChangePlugin(workDir),
     ],
     cacheDir: path.join(__dirname, `node_modules/.vite-${workDirHash}`),
     server: {
