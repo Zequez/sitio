@@ -16,7 +16,7 @@ import imagesPlugin from "./src/vite-plugins/images-plugin";
 export interface SitioBuildMetaConfigOptions {
   workDir: string;
   port: number;
-  liquidData?: Record<string, unknown>;
+  buildMode?: boolean;
 }
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
@@ -24,6 +24,7 @@ const __dirname = path.dirname(new URL(import.meta.url).pathname);
 export async function defineSitioBuildMetaConfig({
   workDir: workDir,
   port,
+  buildMode = false,
 }: SitioBuildMetaConfigOptions): Promise<UserConfig> {
   const resolvedWorkDir = path.resolve(workDir);
   const libDir = path.join(resolvedWorkDir, "lib");
