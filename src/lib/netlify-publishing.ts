@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
+import { createInterface } from "node:readline/promises";
 import bestzip from "bestzip";
 
 interface PublishToNetlifyOptions {
@@ -27,18 +28,17 @@ export async function publishToNetlify({
   workDir,
 }: PublishToNetlifyOptions): Promise<NetlifyPublishResult> {
   const envPath = path.join(workDir, ".env");
-  const env = loadWorkDirEnv(workDir);
-  const authToken = env.NETLIFY_AUTH_TOKEN;
-  const accountId = env.NETLIFY_ACCOUNT_ID;
-  let siteId = env.NETLIFY_SITE_ID;
-
-  if (!authToken) {
-    throw new Error(`Missing NETLIFY_AUTH_TOKEN in ${envPath}`);
-  }
-
-  if (!accountId) {
-    throw new Error(`Missing NETLIFY_ACCOUNT_ID in ${envPath}`);
-  }
+  const storedEnv = loadDotEnv(workDir);
+  const authToken = await ensureStoredNetlifyAuthToken(
+    workDir,
+    storedEnv.NETLIFY_AUTH_TOKEN,
+  );
+  const accountId = await ensureStoredNetlifyAccountId(
+    workDir,
+    authToken,
+    storedEnv.NETLIFY_ACCOUNT_ID,
+  );
+  let siteId = storedEnv.NETLIFY_SITE_ID;
 
   if (!siteId) {
     siteId = await createNetlifySiteAndDeploy(
@@ -61,9 +61,9 @@ export async function publishToNetlify({
   };
 }
 
-function loadWorkDirEnv(workDir: string) {
+function loadDotEnv(workDir: string) {
   const envPath = path.join(workDir, ".env");
-  const envEntries = { ...process.env } as Record<string, string | undefined>;
+  const envEntries = {} as Record<string, string | undefined>;
 
   if (!existsSync(envPath)) {
     return envEntries;
@@ -95,6 +95,61 @@ function loadWorkDirEnv(workDir: string) {
   }
 
   return envEntries;
+}
+
+async function ensureStoredNetlifyAuthToken(
+  workDir: string,
+  storedAuthToken?: string,
+) {
+  if (storedAuthToken) {
+    return storedAuthToken;
+  }
+
+  const envPath = path.join(workDir, ".env");
+  const prompt = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    const authToken = (await prompt.question(
+      `Enter NETLIFY_AUTH_TOKEN to store in ${envPath}: `,
+    )).trim();
+
+    if (!authToken) {
+      throw new Error("NETLIFY_AUTH_TOKEN is required");
+    }
+
+    upsertEnvValue(workDir, "NETLIFY_AUTH_TOKEN", authToken);
+    return authToken;
+  } finally {
+    prompt.close();
+  }
+}
+
+async function ensureStoredNetlifyAccountId(
+  workDir: string,
+  authToken: string,
+  storedAccountId?: string,
+) {
+  if (storedAccountId) {
+    return storedAccountId;
+  }
+
+  const accounts = await fetchNetlifyAccounts(authToken);
+
+  if (accounts.length === 0) {
+    throw new Error("No Netlify accounts were returned for this auth token");
+  }
+
+  const accountId = accounts[0]?.id;
+
+  if (typeof accountId !== "string" || accountId.length === 0) {
+    throw new Error("Netlify account lookup did not return a valid account id");
+  }
+
+  upsertEnvValue(workDir, "NETLIFY_ACCOUNT_ID", accountId);
+  return accountId;
 }
 
 function stripWrappingQuotes(value: string) {
@@ -336,6 +391,28 @@ async function fetchNetlifySite(authToken: string, siteId: string) {
   }
 
   return (await response.json()) as NetlifySite;
+}
+
+async function fetchNetlifyAccounts(authToken: string) {
+  const response = await fetch("https://api.netlify.com/api/v1/accounts", {
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+      "User-Agent": "sitio-cli",
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Failed to fetch Netlify accounts (${response.status}): ${errorText}`,
+    );
+  }
+
+  return (await response.json()) as Array<{
+    id?: unknown;
+    name?: unknown;
+    slug?: unknown;
+  }>;
 }
 
 function getNetlifySiteUrl(site: NetlifySite) {
