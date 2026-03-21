@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import path from "path";
@@ -8,6 +8,7 @@ import path from "path";
 import { portForName } from "./lib/portForName.ts";
 import { spawnViteServer } from "./lib/vite-server-spawner.ts";
 import { optimizedWatcher } from "./lib/optimizedWatcher.ts";
+import { publishToNetlify } from "./lib/netlify-publishing.ts";
 import buildViteConfig from "../vite.build.config.ts";
 import { build as viteBuild } from "vite";
 
@@ -124,55 +125,13 @@ async function runPublish() {
     );
   }
 
-  const env = loadWorkDirEnv(workDir);
-  const authToken = env.NETLIFY_AUTH_TOKEN;
-  const siteId = env.NETLIFY_SITE_ID;
-
-  if (!authToken) {
-    throw new Error(
-      `Missing NETLIFY_AUTH_TOKEN in ${path.join(workDir, ".env")}`,
-    );
-  }
-
-  if (!siteId) {
-    throw new Error(
-      `Missing NETLIFY_SITE_ID in ${path.join(workDir, ".env")}`,
-    );
-  }
-
-  const deployArgs = [
-    "x",
-    "netlify",
-    "deploy",
-    "--dir",
+  const { siteUrl, adminUrl } = await publishToNetlify({
     outputDir,
-    "--prod",
-    "--no-build",
-    "--auth",
-    authToken,
-    "--site",
-    siteId,
-  ];
-
-  console.log("Publishing to Netlify...");
-
-  const publishProcess = Bun.spawn([process.execPath, ...deployArgs], {
-    cwd: workDir,
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-    env: {
-      ...process.env,
-      ...env,
-      NETLIFY_AUTH_TOKEN: authToken,
-    },
+    workDir,
   });
 
-  const exitCode = await publishProcess.exited;
-
-  if (exitCode !== 0) {
-    throw new Error(`Netlify publish failed with exit code ${exitCode}`);
-  }
+  console.log(`Published at ${siteUrl}`);
+  console.log(`Netlify Admin panel at ${adminUrl}`);
 }
 
 // ██╗   ██╗████████╗██╗██╗     ███████╗
@@ -206,51 +165,4 @@ function resolveDistFile(distDir: string, pathname: string) {
   }
 
   return undefined;
-}
-
-function loadWorkDirEnv(workDir: string) {
-  const envPath = path.join(workDir, ".env");
-  const envEntries = { ...process.env } as Record<string, string | undefined>;
-
-  if (!existsSync(envPath)) {
-    return envEntries;
-  }
-
-  const envContents = readFileSync(envPath, "utf8");
-
-  for (const line of envContents.split(/\r?\n/)) {
-    const trimmedLine = line.trim();
-
-    if (!trimmedLine || trimmedLine.startsWith("#")) {
-      continue;
-    }
-
-    const separatorIndex = trimmedLine.indexOf("=");
-
-    if (separatorIndex === -1) {
-      continue;
-    }
-
-    const key = trimmedLine.slice(0, separatorIndex).trim();
-    const rawValue = trimmedLine.slice(separatorIndex + 1).trim();
-
-    if (!key) {
-      continue;
-    }
-
-    envEntries[key] = stripWrappingQuotes(rawValue);
-  }
-
-  return envEntries;
-}
-
-function stripWrappingQuotes(value: string) {
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-
-  return value;
 }
