@@ -10,7 +10,8 @@
     "sitio": "./src/cli.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "netlify-cli": "^23.11.0"
   },
   "peerDependencies": {
     "typescript": "^5"

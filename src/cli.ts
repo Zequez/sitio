@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import path from "path";
@@ -42,8 +42,13 @@ yargs(argv.length === 0 ? ["dev"] : argv)
       runPreview();
     },
   )
-  .command("pub", "Build sitio and publish it", async () => {})
-  .command("pu", "Publish the already built sitio", async () => {})
+  .command("pub", "Build sitio and publish it", async () => {
+    await runBuild();
+    await runPublish();
+  })
+  .command("pu", "Publish the already built sitio", async () => {
+    await runPublish();
+  })
   .parse();
 
 async function runDev() {
@@ -110,7 +115,65 @@ function runPreview() {
   console.log(`Sitio preview @ http://localhost:${server.port}`);
 }
 
-function runPublish() {}
+async function runPublish() {
+  const outputDir = path.join(workDir, "www");
+
+  if (!existsSync(outputDir)) {
+    throw new Error(
+      `Output directory not found at ${outputDir}. Run "sitio build" first.`,
+    );
+  }
+
+  const env = loadWorkDirEnv(workDir);
+  const authToken = env.NETLIFY_AUTH_TOKEN;
+  const siteId = env.NETLIFY_SITE_ID;
+
+  if (!authToken) {
+    throw new Error(
+      `Missing NETLIFY_AUTH_TOKEN in ${path.join(workDir, ".env")}`,
+    );
+  }
+
+  if (!siteId) {
+    throw new Error(
+      `Missing NETLIFY_SITE_ID in ${path.join(workDir, ".env")}`,
+    );
+  }
+
+  const deployArgs = [
+    "x",
+    "netlify",
+    "deploy",
+    "--dir",
+    outputDir,
+    "--prod",
+    "--no-build",
+    "--auth",
+    authToken,
+    "--site",
+    siteId,
+  ];
+
+  console.log("Publishing to Netlify...");
+
+  const publishProcess = Bun.spawn([process.execPath, ...deployArgs], {
+    cwd: workDir,
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+    env: {
+      ...process.env,
+      ...env,
+      NETLIFY_AUTH_TOKEN: authToken,
+    },
+  });
+
+  const exitCode = await publishProcess.exited;
+
+  if (exitCode !== 0) {
+    throw new Error(`Netlify publish failed with exit code ${exitCode}`);
+  }
+}
 
 // ██╗   ██╗████████╗██╗██╗     ███████╗
 // ██║   ██║╚══██╔══╝██║██║     ██╔════╝
@@ -143,4 +206,51 @@ function resolveDistFile(distDir: string, pathname: string) {
   }
 
   return undefined;
+}
+
+function loadWorkDirEnv(workDir: string) {
+  const envPath = path.join(workDir, ".env");
+  const envEntries = { ...process.env } as Record<string, string | undefined>;
+
+  if (!existsSync(envPath)) {
+    return envEntries;
+  }
+
+  const envContents = readFileSync(envPath, "utf8");
+
+  for (const line of envContents.split(/\r?\n/)) {
+    const trimmedLine = line.trim();
+
+    if (!trimmedLine || trimmedLine.startsWith("#")) {
+      continue;
+    }
+
+    const separatorIndex = trimmedLine.indexOf("=");
+
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const key = trimmedLine.slice(0, separatorIndex).trim();
+    const rawValue = trimmedLine.slice(separatorIndex + 1).trim();
+
+    if (!key) {
+      continue;
+    }
+
+    envEntries[key] = stripWrappingQuotes(rawValue);
+  }
+
+  return envEntries;
+}
+
+function stripWrappingQuotes(value: string) {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+
+  return value;
 }
