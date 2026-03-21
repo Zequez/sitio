@@ -37,6 +37,7 @@ export async function defineSitioBuildMetaConfig({
   const inputImagesDir = path.join(resolvedWorkDir, "images");
   const publicDir = path.join(resolvedWorkDir, "public");
   const outputImagesDir = path.join(publicDir, "images");
+  const outputDir = path.join(resolvedWorkDir, "www");
   const workDirHash = Buffer.from(resolvedWorkDir).toString("base64");
 
   if (!hasPagesDir) {
@@ -50,6 +51,7 @@ export async function defineSitioBuildMetaConfig({
         "components",
         "data",
         "dist",
+        "www",
         "images",
         "lib",
         "node_modules",
@@ -90,6 +92,7 @@ export async function defineSitioBuildMetaConfig({
       },
     },
     build: {
+      outDir: outputDir,
       rollupOptions: {
         input: collectHtmlEntrypoints(pagesDir, ignoredEntrypointDirs), // This is just for build, so does not matter if it doesn't regenrate on server restart
       },

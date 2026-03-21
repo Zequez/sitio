@@ -16,6 +16,36 @@ const argv = hideBin(process.argv);
 
 const PORT = await portForName(workDir);
 
+//  ██████╗██╗     ██╗
+// ██╔════╝██║     ██║
+// ██║     ██║     ██║
+// ██║     ██║     ██║
+// ╚██████╗███████╗██║
+//  ╚═════╝╚══════╝╚═╝
+
+yargs(argv.length === 0 ? ["dev"] : argv)
+  .scriptName("sitio")
+  .help()
+  .command("init", "Initializes a new sitio project", (yargs) => {
+    console.log("Pending");
+  })
+  .command("dev", "Starts sitio in development mode", async () => {
+    await runDev();
+  })
+  .command("build", "Build sitio for deployment", async () => {
+    await runBuild();
+  })
+  .command(
+    "preview",
+    "Start static server to preview the built site",
+    async () => {
+      runPreview();
+    },
+  )
+  .command("pub", "Build sitio and publish it", async () => {})
+  .command("pu", "Publish the already built sitio", async () => {})
+  .parse();
+
 async function runDev() {
   console.log(`Sitio starting @ localhost:${PORT}`);
 
@@ -44,8 +74,55 @@ async function runDev() {
   });
 }
 
+async function runBuild() {
+  const viteConfig = await buildViteConfig({
+    workDir,
+    port: PORT,
+    buildMode: true,
+  });
+  await viteBuild(viteConfig);
+}
+
+function runPreview() {
+  const outputDir = path.join(workDir, "www");
+
+  if (!existsSync(outputDir)) {
+    throw new Error(`Output directory not found at ${outputDir}`);
+  }
+
+  const server = Bun.serve({
+    port: PORT,
+    fetch(request) {
+      const url = new URL(request.url);
+      const filePath = resolveDistFile(
+        outputDir,
+        decodeURIComponent(url.pathname),
+      );
+
+      if (!filePath) {
+        return new Response("Not found", { status: 404 });
+      }
+
+      return new Response(Bun.file(filePath));
+    },
+  });
+
+  console.log(`Sitio preview @ http://localhost:${server.port}`);
+}
+
+function runPublish() {}
+
+// ██╗   ██╗████████╗██╗██╗     ███████╗
+// ██║   ██║╚══██╔══╝██║██║     ██╔════╝
+// ██║   ██║   ██║   ██║██║     ███████╗
+// ██║   ██║   ██║   ██║██║     ╚════██║
+// ╚██████╔╝   ██║   ██║███████╗███████║
+//  ╚═════╝    ╚═╝   ╚═╝╚══════╝╚══════╝
+
 function resolveDistFile(distDir: string, pathname: string) {
-  const cleanPathname = pathname.endsWith("/") ? `${pathname}index.html` : pathname;
+  const cleanPathname = pathname.endsWith("/")
+    ? `${pathname}index.html`
+    : pathname;
   const candidatePath = path.resolve(distDir, `.${cleanPathname}`);
   const relativePath = path.relative(distDir, candidatePath);
 
@@ -67,60 +144,3 @@ function resolveDistFile(distDir: string, pathname: string) {
 
   return undefined;
 }
-
-function runPreview() {
-  const distDir = path.join(workDir, "dist");
-
-  if (!existsSync(distDir)) {
-    throw new Error(`Dist directory not found at ${distDir}`);
-  }
-
-  const server = Bun.serve({
-    port: PORT,
-    fetch(request) {
-      const url = new URL(request.url);
-      const filePath = resolveDistFile(distDir, decodeURIComponent(url.pathname));
-
-      if (!filePath) {
-        return new Response("Not found", { status: 404 });
-      }
-
-      return new Response(Bun.file(filePath));
-    },
-  });
-
-  console.log(`Sitio preview @ http://localhost:${server.port}`);
-}
-
-//  ██████╗██╗     ██╗
-// ██╔════╝██║     ██║
-// ██║     ██║     ██║
-// ██║     ██║     ██║
-// ╚██████╗███████╗██║
-//  ╚═════╝╚══════╝╚═╝
-
-yargs(argv.length === 0 ? ["dev"] : argv)
-  .scriptName("sitio")
-  .help()
-  .command("init", "Initializes a new sitio project", (yargs) => {
-    console.log("Pending");
-  })
-  .command("dev", "Starts sitio in development mode", async () => {
-    await runDev();
-  })
-  .command("build", "Build sitio for deployment", async () => {
-    const viteConfig = await buildViteConfig({
-      workDir,
-      port: PORT,
-      buildMode: true,
-    });
-    await viteBuild(viteConfig);
-  })
-  .command(
-    "preview",
-    "Start static server to preview the built site",
-    async () => {
-      runPreview();
-    },
-  )
-  .parse();

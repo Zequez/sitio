@@ -12,11 +12,26 @@ export function notFoundPlugin(): Plugin {
 
     configResolved(config) {
       root = config.root;
+      validPages.clear();
 
       const inputs = config.build?.rollupOptions?.input || {};
 
-      for (const file of Object.values(inputs)) {
-        validPages.add("/" + path.basename(file));
+      if (typeof inputs === "string") {
+        addValidPageEntry(
+          validPages,
+          path.basename(inputs, path.extname(inputs)),
+        );
+      } else if (Array.isArray(inputs)) {
+        for (const input of inputs) {
+          addValidPageEntry(
+            validPages,
+            path.basename(input, path.extname(input)),
+          );
+        }
+      } else {
+        for (const entryName of Object.keys(inputs)) {
+          addValidPageEntry(validPages, entryName);
+        }
       }
 
       validPages.add("/");
@@ -24,38 +39,66 @@ export function notFoundPlugin(): Plugin {
     },
 
     configureServer(server) {
-      return () => {
-        server.middlewares.use((req, res, next) => {
-          const url = (req.originalUrl || req.url)!.split("?")[0]!;
+      server.middlewares.use((req, res, next) => {
+        const pathname = new URL(
+          req.originalUrl || req.url || "/",
+          "http://localhost",
+        ).pathname;
 
-          if (url.includes(".") || url.startsWith("/@")) {
-            return next();
-          }
+        if (pathname.includes(".") || pathname.startsWith("/@")) {
+          return next();
+        }
 
-          const urlHtml = url.endsWith("/")
-            ? `${url}index.html`
-            : `${url}.html`;
+        const normalizedPath =
+          pathname !== "/" && pathname.endsWith("/")
+            ? pathname.slice(0, -1)
+            : pathname;
 
-          if (!validPages.has(urlHtml)) {
-            const file = path.join(root, "404.html");
+        if (validPages.has(pathname) || validPages.has(normalizedPath)) {
+          return next();
+        }
 
-            if (fs.existsSync(file)) {
-              const html = fs.readFileSync(file, "utf-8");
+        const file = path.join(root, "404.html");
 
-              res.statusCode = 404;
-              res.setHeader("Content-Type", "text/html");
+        if (!fs.existsSync(file)) {
+          return next();
+        }
 
-              server
-                .transformIndexHtml(urlHtml, html)
-                .then((out) => res.end(out));
+        const html = fs.readFileSync(file, "utf-8");
 
-              return;
-            }
-          }
+        res.statusCode = 404;
+        res.setHeader("Content-Type", "text/html");
 
-          next();
-        });
-      };
+        server
+          .transformIndexHtml(pathname, html)
+          .then((out) => res.end(out))
+          .catch(next);
+      });
     },
   };
+}
+
+function addValidPageEntry(validPages: Set<string>, entryName: string) {
+  const normalizedEntry = entryName.replace(/\\/g, "/");
+
+  if (normalizedEntry === "index") {
+    validPages.add("/");
+    validPages.add("/index.html");
+    return;
+  }
+
+  if (normalizedEntry.endsWith("/index")) {
+    const directoryPath = `/${normalizedEntry.slice(0, -"/index".length)}`;
+
+    validPages.add(directoryPath);
+    validPages.add(`${directoryPath}/`);
+    validPages.add(`${directoryPath}/index.html`);
+    return;
+  }
+
+  const routePath = `/${normalizedEntry}`;
+
+  validPages.add(routePath);
+  validPages.add(`${routePath}/`);
+  validPages.add(`${routePath}.html`);
 }
