@@ -1,2 +1,0 @@
-- When you write code use Top-down organization following the Step-down rule
-- This repo is Bun-native, it's not meant to work with npm or yarn or pnpm, so you can recklessly use any Bun-only API

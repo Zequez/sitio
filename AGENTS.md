@@ -1,0 +1,5 @@
+- When you write code use Top-down organization following the Step-down rule
+- This repo is Bun-native, it's not meant to work with npm or yarn or pnpm, so you can recklessly use any Bun-only API
+- Use Tailwind classes for CSS
+- When writing Svelte, use Svelte 5 conventions
+- You can use Font Awesome 7 icons using fa-<name> class

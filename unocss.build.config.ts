@@ -48,7 +48,9 @@ export default (workDir: string, workDirHash: string) => {
         },
       }),
       presetWind4(),
-      presetAttributify(),
+      presetAttributify({
+        ignoreAttributes: ["font-size", "stroke-width", "fill"],
+      }),
       presetWebFonts({
         provider: "google", // default provider
         fonts: fonts,

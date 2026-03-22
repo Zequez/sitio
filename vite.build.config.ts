@@ -13,6 +13,7 @@ import UnoCSS from "unocss/vite";
 import generateUnoCSSConfig, { getFontsDir } from "./unocss.build.config";
 import { existsSync } from "node:fs";
 import imagesPlugin from "./src/vite-plugins/images-plugin";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 
 export interface SitioBuildMetaConfigOptions {
   workDir: string;
@@ -83,6 +84,7 @@ export async function defineSitioBuildMetaConfig({
       UnoCSS(generateUnoCSSConfig(workDir, workDirHash)),
       imagesPlugin(inputImagesDir, outputImagesDir),
       directoryIndexHtmlPlugin(),
+      svelte(),
     ],
     cacheDir: path.join(__dirname, `node_modules/.vite-${workDirHash}`),
     server: {
