@@ -1,13 +1,24 @@
 {
-  "name": "sitio",
-  "module": "index.ts",
+  "name": "@ezequielschw/sitio",
+  "version": "0.1.1",
   "type": "module",
-  "private": true,
+  "description": "Static site system powered by Vite, Liquid, UnoCSS, Sharp, and Bun.",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "bin",
+    "src",
+    "vite.build.config.ts",
+    "unocss.build.config.ts",
+    "AGENTS2.md",
+    "README.md"
+  ],
   "scripts": {
-    "dev": "sitio dev"
+    "deploy:npm": "bun run ./src/lib/npm-publishing.ts"
   },
   "bin": {
-    "sitio": "./src/cli.ts"
+    "sitio": "./bin/sitio.js"
   },
   "devDependencies": {
     "@types/bun": "latest"
