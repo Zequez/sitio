@@ -1,4 +1,5 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export interface ViteServerSpawner {
   restart: () => Promise<void>;
@@ -9,7 +10,7 @@ export function spawnViteServer(
   port: number,
 ): ViteServerSpawner {
   const viteServerPath = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
+    path.dirname(fileURLToPath(import.meta.url)),
     "../vite-server.ts",
   );
 

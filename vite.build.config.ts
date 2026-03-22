@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { type UserConfig } from "vite";
 
@@ -21,7 +22,7 @@ export interface SitioBuildMetaConfigOptions {
   buildMode?: boolean;
 }
 
-const __dirname = path.dirname(new URL(import.meta.url).pathname);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export async function defineSitioBuildMetaConfig({
   workDir: workDir,

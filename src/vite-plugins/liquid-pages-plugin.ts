@@ -6,6 +6,7 @@ import {
   type FSWatcher,
 } from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { type Plugin } from "vite";
 import { Liquid } from "liquidjs";
@@ -16,7 +17,7 @@ import { replaceComponents } from "../lib/htmlTagsToLiquidInclude.ts";
 import { renderMarkdownWithHtmlPassthrough } from "../lib/renderMarkdownWithHtmlPassthrough.ts";
 import { imagesSizes, type ImageSet } from "./images-plugin.ts";
 
-const __dirname = path.dirname(new URL(import.meta.url).pathname);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PRESET_COMPONENTS_DIR = path.join(__dirname, "../components");
 
 export async function createLiquidPagesPlugin(

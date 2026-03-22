@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from "fs";
 import path from "path";
+import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 
 import { defineConfig, presetWind4, transformerDirectives } from "unocss";
@@ -16,7 +17,7 @@ const FLEX_ALIGNS: Record<string, string> = {
 };
 
 import presetAttributify from "@unocss/preset-attributify";
-const __dirname = path.dirname(new URL(import.meta.url).pathname);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function getFontsCacheDir(workDirHash: string) {
   return path.join(
