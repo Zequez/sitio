@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 
-import { existsSync } from "node:fs";
+import { copyFileSync, existsSync } from "node:fs";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import path from "path";
+import { fileURLToPath } from "node:url";
 
 import { portForName } from "./lib/portForName.ts";
 import { spawnViteServer } from "./lib/vite-server-spawner.ts";
@@ -14,6 +15,9 @@ import { build as viteBuild } from "vite";
 
 const workDir = process.cwd();
 const argv = hideBin(process.argv);
+const cliDir = path.dirname(fileURLToPath(import.meta.url));
+const sitioRootDir = path.resolve(cliDir, "..");
+const agentsTemplatePath = path.join(sitioRootDir, "AGENTS2.md");
 
 const PORT = await portForName(workDir);
 
@@ -27,8 +31,8 @@ const PORT = await portForName(workDir);
 yargs(argv.length === 0 ? ["dev"] : argv)
   .scriptName("sitio")
   .help()
-  .command("init", "Initializes a new sitio project", (yargs) => {
-    console.log("Pending");
+  .command("init", "Initializes a new sitio project", async () => {
+    await runInit();
   })
   .command("dev", "Starts sitio in development mode", async () => {
     await runDev();
@@ -78,6 +82,13 @@ async function runDev() {
   optimizedWatcher(filesToWatch, async () => {
     await restart();
   });
+}
+
+async function runInit() {
+  const targetPath = path.join(workDir, "AGENTS.md");
+
+  copyFileSync(agentsTemplatePath, targetPath);
+  console.log(`Created ${targetPath}`);
 }
 
 async function runBuild() {
