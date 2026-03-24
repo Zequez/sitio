@@ -10,6 +10,10 @@ import { portForName } from "./lib/portForName.ts";
 import { spawnViteServer } from "./lib/vite-server-spawner.ts";
 import { optimizedWatcher } from "./lib/optimizedWatcher.ts";
 import { publishToNetlify } from "./lib/netlify-publishing.ts";
+import {
+  installSitioContextMenu,
+  uninstallSitioContextMenu,
+} from "./lib/context-menu.ts";
 import buildViteConfig from "../vite.build.config.ts";
 import { build as viteBuild } from "vite";
 
@@ -34,6 +38,16 @@ yargs(argv.length === 0 ? ["dev"] : argv)
   .command("init", "Initializes a new sitio project", async () => {
     await runInit();
   })
+  .command("install", "Installs the Sitio folder context menu integration", async () => {
+    await runInstall();
+  })
+  .command(
+    "uninstall",
+    "Removes the Sitio folder context menu integration",
+    async () => {
+      await runUninstall();
+    },
+  )
   .command("dev", "Starts sitio in development mode", async () => {
     await runDev();
   })
@@ -89,6 +103,16 @@ async function runInit() {
 
   copyFileSync(agentsTemplatePath, targetPath);
   console.log(`Created ${targetPath}`);
+}
+
+async function runInstall() {
+  await installSitioContextMenu();
+  console.log("Sitio context menu installed.");
+}
+
+async function runUninstall() {
+  await uninstallSitioContextMenu();
+  console.log("Sitio context menu removed.");
 }
 
 async function runBuild() {
