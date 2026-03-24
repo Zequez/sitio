@@ -1,0 +1,39 @@
+{
+  // Copy this file into a Sitio project and replace __SITIO_PACKAGE_DIR__
+  // with the installed package path, for example:
+  // "./node_modules/@ezequielschw/sitio"
+  //
+  // The project then inherits Sitio's Svelte/Vite/Bun-friendly defaults
+  // and re-points the workdir-specific aliases back at the local project.
+  "extends": "__SITIO_PACKAGE_DIR__/tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "/@lib": ["./lib"],
+      "/@lib/*": ["./lib/*"]
+    }
+  },
+  "files": [
+    "__SITIO_PACKAGE_DIR__/src/types/sitio-aliases.d.ts"
+  ],
+  "include": [
+    "lib/**/*.ts",
+    "lib/**/*.tsx",
+    "lib/**/*.js",
+    "lib/**/*.jsx",
+    "lib/**/*.d.ts",
+    "lib/**/*.svelte",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.js",
+    "src/**/*.jsx",
+    "src/**/*.d.ts",
+    "src/**/*.svelte",
+    "*.ts",
+    "*.tsx",
+    "*.js",
+    "*.jsx",
+    "*.d.ts"
+  ],
+  "exclude": ["node_modules", "dist", "www"]
+}
