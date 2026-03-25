@@ -162,14 +162,7 @@ export async function createLiquidPagesPlugin(
       name: "liquid-pages-refresher",
       apply: "serve",
       configureServer(server) {
-        const hasComponentDir = existsSync(componentsDir);
-        const hasDataDir = existsSync(dataDir);
-        const hasImagesDir = existsSync(imagesDir);
-
         let reloadTimer: ReturnType<typeof setTimeout> | undefined;
-        let componentsWatcher: FSWatcher | undefined;
-        let dataWatcher: FSWatcher | undefined;
-        let imagesWatcher: FSWatcher | undefined;
 
         const reloadDataAndQueueReload = async () => {
           await refreshData();
@@ -189,54 +182,26 @@ export async function createLiquidPagesPlugin(
           }, 50);
         };
 
-        if (hasComponentDir) {
-          try {
-            componentsWatcher = watch(
-              componentsDir,
-              { recursive: true },
-              () => {
-                queueReload();
-              },
-            );
-          } catch {
-            componentsWatcher = watch(componentsDir, () => {
-              queueReload();
-            });
-          }
-        }
+        const componentsWatch = waitForDirectoryAndWatch(componentsDir, () => {
+          queueReload();
+        });
 
-        if (hasDataDir) {
-          try {
-            dataWatcher = watch(dataDir, { recursive: true }, () => {
-              reloadDataAndQueueReload();
-            });
-          } catch {
-            dataWatcher = watch(dataDir, () => {
-              reloadDataAndQueueReload();
-            });
-          }
-        }
+        const dataWatch = waitForDirectoryAndWatch(dataDir, async () => {
+          await reloadDataAndQueueReload();
+        });
 
-        if (hasImagesDir) {
-          try {
-            imagesWatcher = watch(imagesDir, { recursive: true }, () => {
-              reloadDataAndQueueReload();
-            });
-          } catch {
-            imagesWatcher = watch(imagesDir, () => {
-              reloadDataAndQueueReload();
-            });
-          }
-        }
+        const imagesWatch = waitForDirectoryAndWatch(imagesDir, async () => {
+          await reloadDataAndQueueReload();
+        });
 
         server.httpServer?.once("close", () => {
           if (reloadTimer) {
             clearTimeout(reloadTimer);
           }
 
-          componentsWatcher?.close();
-          dataWatcher?.close();
-          imagesWatcher?.close();
+          componentsWatch.stop();
+          dataWatch.stop();
+          imagesWatch.stop();
         });
       },
     },
@@ -257,6 +222,84 @@ const DEFAULT_IGNORED_HTML_DIRS = new Set([
 
 function isImageSourcesMap(value: unknown): value is Record<string, string> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function waitForDirectoryAndWatch(
+  directoryPath: string,
+  onChange: () => void | Promise<void>,
+) {
+  let isStopped = false;
+  let directoryWatcher: FSWatcher | undefined;
+  let parentWatcher: FSWatcher | undefined;
+
+  const closeAll = () => {
+    isStopped = true;
+    directoryWatcher?.close();
+    directoryWatcher = undefined;
+    parentWatcher?.close();
+    parentWatcher = undefined;
+  };
+
+  const attachDirectoryWatcher = () => {
+    if (isStopped || directoryWatcher || !existsSync(directoryPath)) {
+      return false;
+    }
+
+    const handleChange = () => {
+      void onChange();
+    };
+
+    try {
+      directoryWatcher = watch(directoryPath, { recursive: true }, () => {
+        handleChange();
+      });
+    } catch {
+      directoryWatcher = watch(directoryPath, () => {
+        handleChange();
+      });
+    }
+
+    return true;
+  };
+
+  const ready = (async () => {
+    if (attachDirectoryWatcher()) {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      const parentDirectory = path.dirname(directoryPath);
+
+      const handleParentChange = () => {
+        if (isStopped) {
+          resolve();
+          return;
+        }
+
+        if (!attachDirectoryWatcher()) {
+          return;
+        }
+
+        parentWatcher?.close();
+        parentWatcher = undefined;
+        void onChange();
+        resolve();
+      };
+
+      try {
+        parentWatcher = watch(parentDirectory, handleParentChange);
+      } catch {
+        parentWatcher = watch(parentDirectory, handleParentChange);
+      }
+
+      handleParentChange();
+    });
+  })();
+
+  return {
+    ready,
+    stop: closeAll,
+  };
 }
 
 function createImageSrcset(image: ImageSet, thumb: boolean) {
