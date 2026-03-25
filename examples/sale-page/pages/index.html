@@ -1,0 +1,42 @@
+<StandardLayout
+  title="The Thing"
+  class="bg-yellow-100 pb12 px-6 text-black/75 text-center"
+>
+  <div
+    class="pointer-events-none absolute top-0 left-0 w-full bg-gradient-to-b from-white/20 to-white/0 h-600px"
+  ></div>
+  <h1 class="text-12/48 sm:text-20/48 font-serif tracking-wider">The Thing</h1>
+  <ImgSet
+    src="{{images.contraption}}"
+    class="w-500px block mb-12 rounded-2 mx-auto"
+  />
+  <p class="italic mb12 text-5/12">
+    The thing is the latest of it's kind. It has all the features you need.
+  </p>
+  <div
+    class="py-12 px6 bg-black/10 -mx-6 flex-cc flex-col mb12 shadow-[inset_0_2px_3px_2px_#0003] bg-gradient-to-b from-white/10 to-white/0"
+  >
+    <p class="mb6 text-6/12 font-thin">What people are saying</p>
+    <div class="grid cols-1 sm:cols-2 gap-6 max-w-screen-sm mb12">
+      {% for i in (1..4) %}
+      <div
+        class="bg-gray-50 rounded-2 b b-black/10 shadow-[0_0_1px_0_#0005] p6"
+      >
+        <div class="font-bold">Jane Doe</div>
+        <div>
+          I though I didn't need the thing at first, but then I tried it and it
+          works! I cannot imagine living without the thing now.
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="mb12 text-12/24 font-mono">$ 17,500</div>
+  <div class="flex-cc">
+    <button
+      class="flex-cc h12 w30 uppercase bg-yellow-300 bg-gradient-to-b active:bg-gradient-to-t active:translate-y-1px active:shadow-none outline-yellow-400 from-white/5 to-black/5 font-bold text-white rounded-2 b b-black/10 shadow-sm text-shadow-[0_1px_1px_rgba(0,0,0,0.5)] hover:brightness-105 cursor-pointer"
+    >
+      Buy
+    </button>
+  </div>
+</StandardLayout>
