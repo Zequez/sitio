@@ -1,6 +1,6 @@
 {
   "name": "@ezequielschw/sitio",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Static site system powered by Vite, Liquid, UnoCSS, Sharp, and Bun.",
   "publishConfig": {
