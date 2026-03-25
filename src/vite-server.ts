@@ -3,13 +3,14 @@
 import buildViteConfig from "../vite.build.config.ts";
 import { createServer } from "vite";
 
-const [, , workDir, portArg] = process.argv;
+const [, , workDir, portArg, hostArg] = process.argv;
 
 if (!workDir || !portArg) {
-  throw new Error("Usage: bun src/vite-server.ts <workDir> <port>");
+  throw new Error("Usage: bun src/vite-server.ts <workDir> <port> [host]");
 }
 
 const port = Number(portArg);
+const host = hostArg || "localhost";
 
 if (Number.isNaN(port)) {
   throw new Error(`Invalid port: ${portArg}`);
@@ -18,6 +19,7 @@ if (Number.isNaN(port)) {
 const viteConfig = await buildViteConfig({
   workDir,
   port,
+  host,
 });
 
 const server = await createServer(viteConfig);

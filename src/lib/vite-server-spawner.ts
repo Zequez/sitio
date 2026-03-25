@@ -8,6 +8,7 @@ export interface ViteServerSpawner {
 export function spawnViteServer(
   workDir: string,
   port: number,
+  host: string,
 ): ViteServerSpawner {
   const viteServerPath = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -18,7 +19,7 @@ export function spawnViteServer(
   let isRestarting = false;
 
   function startChild() {
-    return Bun.spawn(["bun", viteServerPath, workDir, String(port)], {
+    return Bun.spawn(["bun", viteServerPath, workDir, String(port), host], {
       cwd: workDir,
       stdin: "ignore",
       stdout: "inherit",

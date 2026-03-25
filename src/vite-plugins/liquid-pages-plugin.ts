@@ -230,14 +230,16 @@ function waitForDirectoryAndWatch(
 ) {
   let isStopped = false;
   let directoryWatcher: FSWatcher | undefined;
-  let parentWatcher: FSWatcher | undefined;
+  let ancestorWatcher: FSWatcher | undefined;
+  let watchedAncestorPath: string | undefined;
 
   const closeAll = () => {
     isStopped = true;
     directoryWatcher?.close();
     directoryWatcher = undefined;
-    parentWatcher?.close();
-    parentWatcher = undefined;
+    ancestorWatcher?.close();
+    ancestorWatcher = undefined;
+    watchedAncestorPath = undefined;
   };
 
   const attachDirectoryWatcher = () => {
@@ -268,31 +270,41 @@ function waitForDirectoryAndWatch(
     }
 
     await new Promise<void>((resolve) => {
-      const parentDirectory = path.dirname(directoryPath);
-
-      const handleParentChange = () => {
+      const handleAncestorChange = () => {
         if (isStopped) {
+          ancestorWatcher?.close();
+          ancestorWatcher = undefined;
+          watchedAncestorPath = undefined;
           resolve();
           return;
         }
 
-        if (!attachDirectoryWatcher()) {
+        if (attachDirectoryWatcher()) {
+          ancestorWatcher?.close();
+          ancestorWatcher = undefined;
+          watchedAncestorPath = undefined;
+          void onChange();
+          resolve();
           return;
         }
 
-        parentWatcher?.close();
-        parentWatcher = undefined;
-        void onChange();
-        resolve();
+        const nextAncestorPath = findDeepestExistingAncestor(directoryPath);
+
+        if (!nextAncestorPath || watchedAncestorPath === nextAncestorPath) {
+          return;
+        }
+
+        ancestorWatcher?.close();
+        watchedAncestorPath = nextAncestorPath;
+
+        try {
+          ancestorWatcher = watch(nextAncestorPath, handleAncestorChange);
+        } catch {
+          ancestorWatcher = watch(nextAncestorPath, handleAncestorChange);
+        }
       };
 
-      try {
-        parentWatcher = watch(parentDirectory, handleParentChange);
-      } catch {
-        parentWatcher = watch(parentDirectory, handleParentChange);
-      }
-
-      handleParentChange();
+      handleAncestorChange();
     });
   })();
 
@@ -300,6 +312,22 @@ function waitForDirectoryAndWatch(
     ready,
     stop: closeAll,
   };
+}
+
+function findDeepestExistingAncestor(directoryPath: string) {
+  let currentPath = path.resolve(directoryPath);
+
+  while (!existsSync(currentPath)) {
+    const parentPath = path.dirname(currentPath);
+
+    if (parentPath === currentPath) {
+      return undefined;
+    }
+
+    currentPath = parentPath;
+  }
+
+  return currentPath;
 }
 
 function createImageSrcset(image: ImageSet, thumb: boolean) {

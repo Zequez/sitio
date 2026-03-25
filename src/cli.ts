@@ -16,6 +16,7 @@ import {
 } from "./lib/context-menu.ts";
 import buildViteConfig from "../vite.build.config.ts";
 import { build as viteBuild } from "vite";
+import type { ArgumentsCamelCase } from "yargs";
 
 const workDir = process.cwd();
 const argv = hideBin(process.argv);
@@ -38,9 +39,13 @@ yargs(argv.length === 0 ? ["dev"] : argv)
   .command("init", "Initializes a new sitio project", async () => {
     await runInit();
   })
-  .command("install", "Installs the Sitio folder context menu integration", async () => {
-    await runInstall();
-  })
+  .command(
+    "install",
+    "Installs the Sitio folder context menu integration",
+    async () => {
+      await runInstall();
+    },
+  )
   .command(
     "uninstall",
     "Removes the Sitio folder context menu integration",
@@ -48,9 +53,21 @@ yargs(argv.length === 0 ? ["dev"] : argv)
       await runUninstall();
     },
   )
-  .command("dev", "Starts sitio in development mode", async () => {
-    await runDev();
-  })
+  .command(
+    "dev",
+    "Starts sitio in development mode",
+    (command) =>
+      command.option("network-access", {
+        alias: "na",
+        type: "boolean",
+        default: false,
+        description:
+          "Bind the dev server to 0.0.0.0 so it can be accessed from the local network",
+      }),
+    async (args) => {
+      await runDev(args);
+    },
+  )
   .command("build", "Build sitio for deployment", async () => {
     await runBuild();
   })
@@ -70,12 +87,13 @@ yargs(argv.length === 0 ? ["dev"] : argv)
   })
   .parse();
 
-async function runDev() {
-  console.log(`Sitio starting @ localhost:${PORT}`);
+async function runDev(args?: ArgumentsCamelCase<{ networkAccess: boolean }>) {
+  const host = args?.networkAccess ? "0.0.0.0" : "localhost";
+  console.log(`Sitio starting @ ${host}:${PORT}`);
 
   const filesToWatch = [path.join(workDir, "fonts.yml")];
 
-  const viteServer = spawnViteServer(workDir, PORT);
+  const viteServer = spawnViteServer(workDir, PORT, host);
   let isRestarting = false;
 
   async function restart() {

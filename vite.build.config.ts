@@ -19,6 +19,7 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 export interface SitioBuildMetaConfigOptions {
   workDir: string;
   port: number;
+  host?: string;
   buildMode?: boolean;
 }
 
@@ -27,6 +28,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export async function defineSitioBuildMetaConfig({
   workDir: workDir,
   port,
+  host = "localhost",
   buildMode = false,
 }: SitioBuildMetaConfigOptions): Promise<UserConfig> {
   const resolvedWorkDir = path.resolve(workDir);
@@ -90,6 +92,7 @@ export async function defineSitioBuildMetaConfig({
     cacheDir: path.join(__dirname, `node_modules/.vite-${workDirHash}`),
     server: {
       port,
+      host,
       fs: {
         allow: [resolvedWorkDir, componentsDir, getFontsDir(workDirHash)],
       },
