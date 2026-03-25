@@ -13,7 +13,7 @@ One configuration for all your web projects.
 
 If you want your own customization, you are meant to fork the repository and maintain your own.
 
-If you want to use my personal preset for building websites, you can just install ~~`@ezequielschw/sitio`~~ (not yet, clone this repo and run `bun link`) and use the `sitio` utility.
+If you want to use my personal preset use this repo.
 
 Sitio projects are not meant to even have a `package.json` or a `node_modules` folder.
 Just a blissfully clean folder with your project files, while the configuration for the
@@ -43,6 +43,12 @@ bun i
 bun link
 ```
 
+Or
+
+```
+bun i -g @ezequielschw/sitio
+```
+
 Then run the `sitio` utility at any folder you want and you are set.
 
 ## Examples
@@ -54,10 +60,12 @@ At the `/examples` folder
 ### Commands
 
 - `sitio` | `sitio dev`: runs the development server
-- `sitio build`: builds the files
-- `sitio preview`: starts a static server on the built files
+- `sitio dev --network-access` | `sitio dev --na`: Allows local network access for the dev server
+- `sitio build`: builds the files into `www`
+- `sitio preview`: starts a static server on the built files at `www`
 - `sitio pu`: publishes the currently built files
 - `sitio pub`: builds and then publishes the files
+- `sitio init`: on the current directory for now it just copies an AGENTS.md file so that agentic AI have some context as to what can be done on a sitio folder structure.
 
 ### Dev Server
 
@@ -99,7 +107,7 @@ There are preset components available by default:
 ### Atomic CSS
 
 - Set up with UnoCSS with the Tailwind 4 preset
-- Attributify mode you can do `<div size-full bg-gray-500 text-white text-50px></div>`
+- Attributify mode activated, you can do `<div size-full bg-gray-500 text-white text-50px></div>`
 
 ### Icons
 
@@ -135,12 +143,16 @@ merriweather: Merriweather:400,700
 
 - Anything on the `/public` directory just gets copied as it is to the output
 
+
 ### Publishing
 
+- Just run `sitio pub`
 - Set up for Netlify
+- It requires `NETLIFY_AUTH_TOKEN` on .env and then it fetches the `NETLIFY_ACCOUNT_ID` automatically, and then if there is no `NETLIFY_SITE_ID` it creates a new site and also stores it on .env
 - Why not Github pages? Because I don't want clients to need to create a Github account or even know what a Github repository, or a branch, or a Git repo are. Netlify allows you to freely publish plain folders without Git. It's enough that they need to learn how to configure a domain name.
-- The building is meant to be done in-situ and then shipped, no build process on a corporate server here (how did that became even a thing?)
-- Extra points for leveraging free Patriarchal Empire corporate infrastructure for your own personal mission in service of Gaia (I'm just thumbing up to myself here)
+- The building is meant to be done in-situ and then shipped, no build process on a server here (how did that became even a thing?)
+- Extra points for leveraging free Patriarchal Empire infrastructure for your own personal mission in service of Gaia (I'm just thumbing up to myself here)
+
 
 ## License
 
