@@ -1,41 +1,99 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { lsState } from "/@shared/ls-state.svelte";
+  import Toolbar from "./Toolbar.svelte";
+  import {
+    applyBucketFill,
+    applyPenStroke,
+    getSquareBrushCoordinates,
+    parseCellKey,
+    TRANSPARENT_SWATCH,
+    type DrawMode,
+    type DrawTool,
+    type GridCoordinate,
+    type PaintedCells,
+  } from "./tools";
 
-  type DrawMode = "paint" | "erase" | null;
-
-  interface GridCoordinate {
-    x: number;
-    y: number;
+  interface PersistedDrawState {
+    canvasWidth: number;
+    canvasHeight: number;
+    blockSize: number;
+    blockGap: number;
+    palette: string[];
+    selectedPaletteIndex: number;
+    secondaryPaletteIndex: number;
+    penSize: number;
+    showGrid: boolean;
+    paintedCells: PaintedCells;
   }
 
   const DEFAULT_WIDTH = 1080;
   const DEFAULT_HEIGHT = 1350;
   const DEFAULT_BLOCK_SIZE = 48;
   const DEFAULT_BLOCK_GAP = 2;
+  const ENABLE_PALETTE_EDITING = false;
+  const INDICATOR_RESOLUTION_SCALE = 0.5;
+  const DEFAULT_PEN_SIZE = 1;
+  const MIN_PEN_SIZE = 1;
+  const MAX_PEN_SIZE = 100;
+  const DEFAULT_PALETTE = [
+    TRANSPARENT_SWATCH,
+    "#ffffff",
+    "#000000",
+    "#ef4444",
+    "#f59e0b",
+    "#eab308",
+    "#22c55e",
+    "#06b6d4",
+    "#3b82f6",
+    "#a855f7",
+  ];
+  const STORAGE_KEY = "canvas-draw-grid-state";
+  const DEFAULT_STATE: PersistedDrawState = {
+    canvasWidth: DEFAULT_WIDTH,
+    canvasHeight: DEFAULT_HEIGHT,
+    blockSize: DEFAULT_BLOCK_SIZE,
+    blockGap: DEFAULT_BLOCK_GAP,
+    palette: [...DEFAULT_PALETTE],
+    selectedPaletteIndex: 2,
+    secondaryPaletteIndex: 0,
+    penSize: DEFAULT_PEN_SIZE,
+    showGrid: true,
+    paintedCells: {},
+  };
 
   let canvas = $state<HTMLCanvasElement | undefined>(undefined);
+  let gridCanvas = $state<HTMLCanvasElement | undefined>(undefined);
+  let indicatorCanvas = $state<HTMLCanvasElement | undefined>(undefined);
+  let shell = $state<HTMLDivElement | undefined>(undefined);
   let stageViewport = $state<HTMLDivElement | undefined>(undefined);
-  let stageSection = $state<HTMLElement | undefined>(undefined);
-  let canvasWidth = $state(DEFAULT_WIDTH);
-  let canvasHeight = $state(DEFAULT_HEIGHT);
-  let blockSize = $state(DEFAULT_BLOCK_SIZE);
-  let blockGap = $state(DEFAULT_BLOCK_GAP);
-  let showGrid = $state(true);
+  let bottomBar = $state<HTMLDivElement | undefined>(undefined);
+  let persisted = lsState(STORAGE_KEY, DEFAULT_STATE, normalizePersistedState);
+  let activeTool = $state<DrawTool>("pen");
   let drawMode = $state<DrawMode>(null);
-  let paintedCells = $state<Record<string, true>>({});
+  let activeStrokeColor = $state<string | null>(null);
+  let hoverCoordinate = $state<GridCoordinate | null>(null);
   let lastDrawCoordinate = $state<GridCoordinate | null>(null);
   let stageViewportWidth = $state(0);
   let stageViewportHeight = $state(0);
+  let bottomBarHeight = $state(0);
   let isFullscreen = $state(false);
 
-  let columns = $derived(Math.max(1, Math.round(canvasWidth / blockSize)));
-  let rows = $derived(Math.max(1, Math.round(canvasHeight / blockSize)));
-  let cellWidth = $derived(canvasWidth / columns);
-  let cellHeight = $derived(canvasHeight / rows);
-  let clampedBlockGap = $derived(
-    Math.max(0, Math.min(blockGap, Math.min(cellWidth, cellHeight) - 1)),
+  let columns = $derived(
+    Math.max(1, Math.round(persisted.canvasWidth / persisted.blockSize)),
   );
-  let paintedCount = $derived(Object.keys(paintedCells).length);
+  let rows = $derived(
+    Math.max(1, Math.round(persisted.canvasHeight / persisted.blockSize)),
+  );
+  let cellWidth = $derived(persisted.canvasWidth / columns);
+  let cellHeight = $derived(persisted.canvasHeight / rows);
+  let clampedBlockGap = $derived(
+    Math.max(
+      0,
+      Math.min(persisted.blockGap, Math.min(cellWidth, cellHeight) - 1),
+    ),
+  );
+  let useLowResolutionCellsCanvas = $derived(clampedBlockGap === 0);
   let stageScale = $derived.by(() => {
     if (stageViewportWidth <= 0 || stageViewportHeight <= 0) {
       return 1;
@@ -43,30 +101,55 @@
 
     return Math.min(
       1,
-      stageViewportWidth / canvasWidth,
-      stageViewportHeight / canvasHeight,
+      stageViewportWidth / persisted.canvasWidth,
+      stageViewportHeight / persisted.canvasHeight,
     );
   });
-  let scaledCanvasWidth = $derived(canvasWidth * stageScale);
-  let scaledCanvasHeight = $derived(canvasHeight * stageScale);
+  let scaledCanvasWidth = $derived(persisted.canvasWidth * stageScale);
+  let scaledCanvasHeight = $derived(persisted.canvasHeight * stageScale);
+  let activePaintColor = $derived(
+    toPaintColor(
+      persisted.palette[
+        clampNumber(
+          persisted.selectedPaletteIndex,
+          0,
+          Math.max(0, persisted.palette.length - 1),
+        )
+      ] ?? DEFAULT_PALETTE[2],
+    ),
+  );
+  let activeSecondaryPaintColor = $derived(
+    toPaintColor(
+      persisted.palette[
+        clampNumber(
+          persisted.secondaryPaletteIndex,
+          0,
+          Math.max(0, persisted.palette.length - 1),
+        )
+      ] ?? DEFAULT_PALETTE[0],
+    ),
+  );
 
   onMount(() => {
     const stopDrawing = () => {
       drawMode = null;
+      activeStrokeColor = null;
       lastDrawCoordinate = null;
     };
     const handleFullscreenChange = () => {
-      isFullscreen = document.fullscreenElement === stageSection;
+      isFullscreen = document.fullscreenElement === shell;
     };
     const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0];
+      for (const entry of entries) {
+        if (entry.target === stageViewport) {
+          stageViewportWidth = entry.contentRect.width;
+          stageViewportHeight = entry.contentRect.height;
+        }
 
-      if (!entry) {
-        return;
+        if (entry.target === bottomBar) {
+          bottomBarHeight = entry.contentRect.height;
+        }
       }
-
-      stageViewportWidth = entry.contentRect.width;
-      stageViewportHeight = entry.contentRect.height;
     });
 
     window.addEventListener("pointerup", stopDrawing);
@@ -74,6 +157,11 @@
 
     if (stageViewport) {
       resizeObserver.observe(stageViewport);
+    }
+
+    if (bottomBar) {
+      resizeObserver.observe(bottomBar);
+      bottomBarHeight = bottomBar.getBoundingClientRect().height;
     }
 
     return () => {
@@ -84,10 +172,10 @@
   });
 
   $effect(() => {
-    const nextCells: Record<string, true> = {};
+    const nextCells: PaintedCells = {};
     let changed = false;
 
-    for (const key of Object.keys(paintedCells)) {
+    for (const key of Object.keys(persisted.paintedCells)) {
       const coordinate = parseCellKey(key);
 
       if (
@@ -100,11 +188,11 @@
         continue;
       }
 
-      nextCells[key] = true;
+      nextCells[key] = persisted.paintedCells[key]!;
     }
 
     if (changed) {
-      paintedCells = nextCells;
+      persisted.paintedCells = nextCells;
     }
   });
 
@@ -112,20 +200,174 @@
     drawCanvas();
   });
 
+  $effect(() => {
+    drawGridCanvas();
+  });
+
+  $effect(() => {
+    drawIndicatorCanvas();
+  });
+
   function setCanvasWidth(value: number) {
-    canvasWidth = clampNumber(value, 64, 4096);
+    persisted.canvasWidth = clampNumber(value, 64, 4096);
   }
 
   function setCanvasHeight(value: number) {
-    canvasHeight = clampNumber(value, 64, 4096);
+    persisted.canvasHeight = clampNumber(value, 64, 4096);
   }
 
   function setBlockSize(value: number) {
-    blockSize = clampNumber(value, 2, 1024);
+    persisted.blockSize = clampNumber(value, 2, 1024);
   }
 
   function setBlockGap(value: number) {
-    blockGap = clampNumber(value, 0, 64);
+    persisted.blockGap = clampNumber(value, 0, 64);
+  }
+
+  function setPenSize(value: number) {
+    persisted.penSize = clampNumber(value, MIN_PEN_SIZE, MAX_PEN_SIZE);
+  }
+
+  function selectPaletteColor(index: number) {
+    persisted.selectedPaletteIndex = clampNumber(
+      index,
+      0,
+      Math.max(0, persisted.palette.length - 1),
+    );
+  }
+
+  function selectSecondaryPaletteColor(index: number) {
+    persisted.secondaryPaletteIndex = clampNumber(
+      index,
+      0,
+      Math.max(0, persisted.palette.length - 1),
+    );
+  }
+
+  function updatePaletteColor(index: number, color: string) {
+    if (index < 0 || index >= persisted.palette.length) {
+      return;
+    }
+
+    const normalizedColor = normalizePaletteEntry(color);
+
+    persisted.palette = persisted.palette.map((entry, entryIndex) =>
+      entryIndex === index ? normalizedColor : entry,
+    );
+  }
+
+  function clearAll() {
+    persisted.paintedCells = {};
+  }
+
+  function setCanvasToScreenSize() {
+    const nextBottomBarHeight = Math.round(
+      bottomBar?.getBoundingClientRect().height ?? bottomBarHeight,
+    );
+
+    setCanvasWidth(window.screen.width);
+    setCanvasHeight(window.screen.height - nextBottomBarHeight);
+  }
+
+  async function toggleFullscreen() {
+    if (!shell) {
+      return;
+    }
+
+    if (document.fullscreenElement === shell) {
+      await document.exitFullscreen();
+      return;
+    }
+
+    await shell.requestFullscreen();
+  }
+
+  function exportCanvas() {
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = persisted.canvasWidth;
+    exportCanvas.height = persisted.canvasHeight;
+
+    const context = exportCanvas.getContext("2d");
+
+    if (!context) {
+      return;
+    }
+
+    drawPaintedSquares(context);
+
+    const link = document.createElement("a");
+    link.href = exportCanvas.toDataURL("image/png");
+    link.download = `sitio-grid-${persisted.canvasWidth}x${persisted.canvasHeight}.png`;
+    link.click();
+  }
+
+  function selectTool(nextTool: DrawTool) {
+    activeTool = nextTool;
+    drawMode = null;
+    activeStrokeColor = null;
+    lastDrawCoordinate = null;
+  }
+
+  function handlePointerDown(event: PointerEvent) {
+    event.preventDefault();
+
+    const nextStrokeColor =
+      event.button === 2 ? activeSecondaryPaintColor : activePaintColor;
+    const nextDrawMode: DrawMode = nextStrokeColor ? "paint" : "erase";
+    const coordinate = getCellFromPointerEvent(event);
+
+    if (!coordinate) {
+      return;
+    }
+
+    activeStrokeColor = nextStrokeColor;
+    hoverCoordinate = coordinate;
+
+    if (activeTool === "bucket") {
+      persisted.paintedCells = applyBucketFill({
+        cells: persisted.paintedCells,
+        start: coordinate,
+        mode: nextDrawMode,
+        paintColor: nextStrokeColor ?? "#000000",
+        columns,
+        rows,
+      });
+      drawMode = null;
+      activeStrokeColor = null;
+      lastDrawCoordinate = null;
+      return;
+    }
+
+    drawMode = nextDrawMode;
+    applyPenCoordinate(coordinate, nextDrawMode, nextStrokeColor);
+  }
+
+  function handlePointerMove(event: PointerEvent) {
+    const coordinate = getCellFromPointerEvent(event);
+    hoverCoordinate = coordinate;
+
+    if (!drawMode || activeTool !== "pen" || !coordinate) {
+      return;
+    }
+
+    applyPenCoordinate(coordinate, drawMode, activeStrokeColor);
+  }
+
+  function handlePointerLeave() {
+    hoverCoordinate = null;
+  }
+
+  function handlePointerWheel(event: WheelEvent) {
+    if (activeTool !== "pen" || event.deltaY === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    setPenSize(persisted.penSize + (event.deltaY < 0 ? 1 : -1));
+  }
+
+  function handleContextMenu(event: MouseEvent) {
+    event.preventDefault();
   }
 
   function drawCanvas() {
@@ -139,17 +381,104 @@
       return;
     }
 
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-    canvas.style.width = `${canvasWidth}px`;
-    canvas.style.height = `${canvasHeight}px`;
+    const cellsCanvasResolution = getCellsCanvasResolution();
 
-    context.clearRect(0, 0, canvasWidth, canvasHeight);
-    drawPaintedSquares(context);
+    canvas.width = cellsCanvasResolution.width;
+    canvas.height = cellsCanvasResolution.height;
+    canvas.style.width = `${persisted.canvasWidth}px`;
+    canvas.style.height = `${persisted.canvasHeight}px`;
+    canvas.style.imageRendering = useLowResolutionCellsCanvas ? "pixelated" : "auto";
 
-    if (showGrid) {
-      drawGridLines(context);
+    context.clearRect(0, 0, cellsCanvasResolution.width, cellsCanvasResolution.height);
+    context.imageSmoothingEnabled = false;
+
+    if (useLowResolutionCellsCanvas) {
+      drawPaintedPixels(context);
+      return;
     }
+
+    drawPaintedSquares(context);
+  }
+
+  function getCellsCanvasResolution() {
+    if (useLowResolutionCellsCanvas) {
+      return {
+        width: columns,
+        height: rows,
+      };
+    }
+
+    return {
+      width: persisted.canvasWidth,
+      height: persisted.canvasHeight,
+    };
+  }
+
+  function drawGridCanvas() {
+    if (!gridCanvas) {
+      return;
+    }
+
+    const context = gridCanvas.getContext("2d");
+
+    if (!context) {
+      return;
+    }
+
+    gridCanvas.width = persisted.canvasWidth;
+    gridCanvas.height = persisted.canvasHeight;
+    gridCanvas.style.width = `${persisted.canvasWidth}px`;
+    gridCanvas.style.height = `${persisted.canvasHeight}px`;
+
+    context.clearRect(0, 0, persisted.canvasWidth, persisted.canvasHeight);
+
+    if (!persisted.showGrid) {
+      return;
+    }
+
+    drawGridLines(context);
+  }
+
+  function drawIndicatorCanvas() {
+    if (!indicatorCanvas) {
+      return;
+    }
+
+    const context = indicatorCanvas.getContext("2d");
+
+    if (!context) {
+      return;
+    }
+
+    const width = Math.max(
+      1,
+      Math.round(persisted.canvasWidth * INDICATOR_RESOLUTION_SCALE),
+    );
+    const height = Math.max(
+      1,
+      Math.round(persisted.canvasHeight * INDICATOR_RESOLUTION_SCALE),
+    );
+    const scaleX = width / persisted.canvasWidth;
+    const scaleY = height / persisted.canvasHeight;
+    const previewMode = drawMode ?? (activePaintColor ? "paint" : "erase");
+    const previewColor = drawMode === "paint" ? activeStrokeColor : activePaintColor;
+
+    indicatorCanvas.width = width;
+    indicatorCanvas.height = height;
+    indicatorCanvas.style.width = `${persisted.canvasWidth}px`;
+    indicatorCanvas.style.height = `${persisted.canvasHeight}px`;
+
+    context.clearRect(0, 0, width, height);
+
+    if (!hoverCoordinate || activeTool !== "pen") {
+      return;
+    }
+
+    context.imageSmoothingEnabled = false;
+    context.save();
+    context.scale(scaleX, scaleY);
+    drawIndicatorSquares(context, hoverCoordinate, previewMode, previewColor);
+    context.restore();
   }
 
   function drawPaintedSquares(context: CanvasRenderingContext2D) {
@@ -157,10 +486,9 @@
     const drawWidth = Math.max(0, cellWidth - clampedBlockGap);
     const drawHeight = Math.max(0, cellHeight - clampedBlockGap);
 
-    context.fillStyle = "#111111";
-
-    for (const key of Object.keys(paintedCells)) {
+    for (const key of Object.keys(persisted.paintedCells)) {
       const { x, y } = parseCellKey(key);
+      context.fillStyle = persisted.paintedCells[key]!;
 
       context.fillRect(
         x * cellWidth + gapOffset,
@@ -168,6 +496,14 @@
         drawWidth,
         drawHeight,
       );
+    }
+  }
+
+  function drawPaintedPixels(context: CanvasRenderingContext2D) {
+    for (const key of Object.keys(persisted.paintedCells)) {
+      const { x, y } = parseCellKey(key);
+      context.fillStyle = persisted.paintedCells[key]!;
+      context.fillRect(x, y, 1, 1);
     }
   }
 
@@ -180,7 +516,7 @@
       const x = column * cellWidth;
       context.beginPath();
       context.moveTo(x, 0);
-      context.lineTo(x, canvasHeight);
+      context.lineTo(x, persisted.canvasHeight);
       context.stroke();
     }
 
@@ -188,54 +524,64 @@
       const y = row * cellHeight;
       context.beginPath();
       context.moveTo(0, y);
-      context.lineTo(canvasWidth, y);
+      context.lineTo(persisted.canvasWidth, y);
       context.stroke();
     }
 
     context.restore();
   }
 
-  function handlePointerDown(event: PointerEvent) {
-    event.preventDefault();
+  function drawIndicatorSquares(
+    context: CanvasRenderingContext2D,
+    center: GridCoordinate,
+    mode: Exclude<DrawMode, null>,
+    color: string | null,
+  ) {
+    const gapOffset = clampedBlockGap / 2;
+    const drawWidth = Math.max(0, cellWidth - clampedBlockGap);
+    const drawHeight = Math.max(0, cellHeight - clampedBlockGap);
+    const indicatorCoordinates = getSquareBrushCoordinates({
+      center,
+      size: persisted.penSize,
+      columns,
+      rows,
+    });
 
-    drawMode = event.button === 2 ? "erase" : "paint";
-    applyDrawEvent(event);
-  }
+    context.save();
 
-  function handlePointerMove(event: PointerEvent) {
-    if (!drawMode) {
-      return;
-    }
+    for (const coordinate of indicatorCoordinates) {
+      const x = coordinate.x * cellWidth + gapOffset;
+      const y = coordinate.y * cellHeight + gapOffset;
 
-    applyDrawEvent(event);
-  }
-
-  function handleContextMenu(event: MouseEvent) {
-    event.preventDefault();
-  }
-
-  function applyDrawEvent(event: PointerEvent) {
-    const coordinate = getCellFromPointerEvent(event);
-
-    if (!coordinate) {
-      return;
-    }
-
-    const coordinatesToApply = lastDrawCoordinate
-      ? interpolateGridLine(lastDrawCoordinate, coordinate)
-      : [coordinate];
-
-    for (const nextCoordinate of coordinatesToApply) {
-      if (drawMode === "paint") {
-        paintCell(nextCoordinate);
-        continue;
+      if (mode === "paint" && color) {
+        context.fillStyle = `${color}aa`;
+        context.fillRect(x, y, drawWidth, drawHeight);
       }
 
-      if (drawMode === "erase") {
-        eraseCell(nextCoordinate);
-      }
+      context.lineWidth = 2;
+      context.strokeStyle =
+        mode === "paint" && color ? "rgba(255,255,255,0.95)" : "#111111";
+      context.strokeRect(x, y, drawWidth, drawHeight);
     }
 
+    context.restore();
+  }
+
+  function applyPenCoordinate(
+    coordinate: GridCoordinate,
+    nextDrawMode: Exclude<DrawMode, null>,
+    nextStrokeColor: string | null,
+  ) {
+    persisted.paintedCells = applyPenStroke({
+      cells: persisted.paintedCells,
+      from: lastDrawCoordinate,
+      to: coordinate,
+      mode: nextDrawMode,
+      paintColor: nextStrokeColor ?? "#000000",
+      brushSize: persisted.penSize,
+      columns,
+      rows,
+    });
     lastDrawCoordinate = coordinate;
   }
 
@@ -250,10 +596,17 @@
       return null;
     }
 
-    const x = ((event.clientX - bounds.left) / bounds.width) * canvasWidth;
-    const y = ((event.clientY - bounds.top) / bounds.height) * canvasHeight;
+    const x =
+      ((event.clientX - bounds.left) / bounds.width) * persisted.canvasWidth;
+    const y =
+      ((event.clientY - bounds.top) / bounds.height) * persisted.canvasHeight;
 
-    if (x < 0 || y < 0 || x > canvasWidth || y > canvasHeight) {
+    if (
+      x < 0 ||
+      y < 0 ||
+      x > persisted.canvasWidth ||
+      y > persisted.canvasHeight
+    ) {
       return null;
     }
 
@@ -263,385 +616,150 @@
     };
   }
 
-  function paintCell({ x, y }: GridCoordinate) {
-    const key = toCellKey(x, y);
-
-    if (paintedCells[key]) {
-      return;
-    }
-
-    paintedCells = {
-      ...paintedCells,
-      [key]: true,
-    };
-  }
-
-  function eraseCell({ x, y }: GridCoordinate) {
-    const key = toCellKey(x, y);
-
-    if (!paintedCells[key]) {
-      return;
-    }
-
-    const nextCells = { ...paintedCells };
-    delete nextCells[key];
-    paintedCells = nextCells;
-  }
-
-  function clearAll() {
-    paintedCells = {};
-  }
-
-  function setCanvasToScreenSize() {
-    setCanvasWidth(window.screen.width);
-    setCanvasHeight(window.screen.height);
-  }
-
-  async function toggleFullscreen() {
-    if (!stageSection) {
-      return;
-    }
-
-    if (document.fullscreenElement === stageSection) {
-      await document.exitFullscreen();
-      return;
-    }
-
-    await stageSection.requestFullscreen();
-  }
-
-  function exportCanvas() {
-    const exportCanvas = document.createElement("canvas");
-    exportCanvas.width = canvasWidth;
-    exportCanvas.height = canvasHeight;
-
-    const context = exportCanvas.getContext("2d");
-
-    if (!context) {
-      return;
-    }
-
-    drawPaintedSquares(context);
-
-    const link = document.createElement("a");
-    link.href = exportCanvas.toDataURL("image/png");
-    link.download = `sitio-grid-${canvasWidth}x${canvasHeight}.png`;
-    link.click();
-  }
-
-  function toCellKey(x: number, y: number) {
-    return `${x},${y}`;
-  }
-
-  function parseCellKey(key: string): GridCoordinate {
-    const [x, y] = key.split(",").map((value) => Number.parseInt(value, 10));
-
-    return {
-      x: x!,
-      y: y!,
-    };
-  }
-
-  function interpolateGridLine(from: GridCoordinate, to: GridCoordinate) {
-    const coordinates: GridCoordinate[] = [];
-    const deltaX = Math.abs(to.x - from.x);
-    const deltaY = Math.abs(to.y - from.y);
-    const stepX = from.x < to.x ? 1 : -1;
-    const stepY = from.y < to.y ? 1 : -1;
-
-    let currentX = from.x;
-    let currentY = from.y;
-    let error = deltaX - deltaY;
-
-    while (true) {
-      coordinates.push({ x: currentX, y: currentY });
-
-      if (currentX === to.x && currentY === to.y) {
-        break;
-      }
-
-      const doubledError = error * 2;
-
-      if (doubledError > -deltaY) {
-        error -= deltaY;
-        currentX += stepX;
-      }
-
-      if (doubledError < deltaX) {
-        error += deltaX;
-        currentY += stepY;
-      }
-    }
-
-    return coordinates;
-  }
-
   function clampNumber(value: number, min: number, max: number) {
     return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
+  }
+
+  function toPaintColor(value: string) {
+    return value === TRANSPARENT_SWATCH ? null : value;
+  }
+
+  function normalizePaletteEntry(value: string) {
+    return value === TRANSPARENT_SWATCH ? TRANSPARENT_SWATCH : value.toLowerCase();
+  }
+
+  function normalizePersistedState(
+    value: Partial<PersistedDrawState> | PersistedDrawState,
+  ): PersistedDrawState {
+    const paintedCells =
+      value &&
+      typeof value === "object" &&
+      value.paintedCells &&
+      typeof value.paintedCells === "object"
+        ? Object.fromEntries(
+            Object.entries(value.paintedCells).flatMap(([key, cellValue]) => {
+              if (typeof cellValue === "string" && !!cellValue) {
+                return [[key, cellValue] as const];
+              }
+
+              if (cellValue) {
+                return [[key, "#000000"] as const];
+              }
+
+              return [];
+            }),
+          )
+        : {};
+    const rawPalette =
+      value &&
+      typeof value === "object" &&
+      Array.isArray(value.palette) &&
+      value.palette.length > 0
+        ? value.palette
+            .filter((entry): entry is string => typeof entry === "string" && !!entry)
+            .map(normalizePaletteEntry)
+        : [...DEFAULT_PALETTE];
+    const hasTransparentSwatch = rawPalette.includes(TRANSPARENT_SWATCH);
+    const palette = hasTransparentSwatch
+      ? rawPalette
+      : [TRANSPARENT_SWATCH, ...rawPalette];
+    const selectedPaletteIndex = clampNumber(
+      (value.selectedPaletteIndex ?? 1) + (hasTransparentSwatch ? 0 : 1),
+      0,
+      Math.max(0, palette.length - 1),
+    );
+    const secondaryPaletteIndex = clampNumber(
+      value.secondaryPaletteIndex ?? 0,
+      0,
+      Math.max(0, palette.length - 1),
+    );
+
+    return {
+      canvasWidth: clampNumber(value.canvasWidth ?? DEFAULT_WIDTH, 64, 4096),
+      canvasHeight: clampNumber(value.canvasHeight ?? DEFAULT_HEIGHT, 64, 4096),
+      blockSize: clampNumber(value.blockSize ?? DEFAULT_BLOCK_SIZE, 2, 1024),
+      blockGap: clampNumber(value.blockGap ?? DEFAULT_BLOCK_GAP, 0, 64),
+      palette,
+      selectedPaletteIndex,
+      secondaryPaletteIndex,
+      penSize: clampNumber(value.penSize ?? DEFAULT_PEN_SIZE, 1, MAX_PEN_SIZE),
+      showGrid: value.showGrid ?? true,
+      paintedCells,
+    };
   }
 </script>
 
 <div
-  class="fixed inset-0 grid gap-5 bg-stone-950 p-5 text-stone-950 max-lg:grid-cols-1 lg:grid-cols-[19rem_minmax(0,1fr)]"
+  bind:this={shell}
+  class={`fixed inset-0 grid grid-rows-[minmax(0,1fr)_auto] bg-stone-950 text-stone-50 gap-0 p-0 `}
 >
-  <aside
-    class="grid min-h-0 gap-4 rounded-[1.75rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-4 text-stone-50 shadow-[0_20px_60px_rgba(0,0,0,0.32)] backdrop-blur"
-  >
-    <div class="grid gap-2 border-b border-white/10 pb-4">
-      <p
-        class="m-0 text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-amber-200/75"
-      >
-        Canvas Draw Grid
-      </p>
-      <h1 class="m-0 text-3xl leading-none">Draw</h1>
-      <p class="m-0 text-sm leading-6 text-stone-300/86">
-        Resize the canvas, choose a target block size, and paint directly onto
-        cells.
-      </p>
-    </div>
-
-    <div class="grid min-h-0 content-start gap-3 overflow-auto pr-1">
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-        <label class="grid gap-2 rounded-[1.2rem] bg-white/5 p-3">
-          <span
-            class="text-[0.74rem] font-semibold uppercase tracking-[0.14em] text-stone-300"
-          >
-            Canvas width
-          </span>
-          <input
-            type="number"
-            min="64"
-            max="4096"
-            step="1"
-            class="h-11 rounded-[0.95rem] border border-white/10 bg-stone-950/65 px-3 text-[0.95rem] text-stone-50 outline-none focus:border-amber-300"
-            value={canvasWidth}
-            oninput={(event) =>
-              setCanvasWidth(
-                Number.parseInt(
-                  (event.currentTarget as HTMLInputElement).value,
-                  10,
-                ),
-              )}
-          />
-        </label>
-
-        <label class="grid gap-2 rounded-[1.2rem] bg-white/5 p-3">
-          <span
-            class="text-[0.74rem] font-semibold uppercase tracking-[0.14em] text-stone-300"
-          >
-            Canvas height
-          </span>
-          <input
-            type="number"
-            min="64"
-            max="4096"
-            step="1"
-            class="h-11 rounded-[0.95rem] border border-white/10 bg-stone-950/65 px-3 text-[0.95rem] text-stone-50 outline-none focus:border-amber-300"
-            value={canvasHeight}
-            oninput={(event) =>
-              setCanvasHeight(
-                Number.parseInt(
-                  (event.currentTarget as HTMLInputElement).value,
-                  10,
-                ),
-              )}
-          />
-        </label>
-      </div>
-
-      <label class="grid gap-2 rounded-[1.2rem] bg-white/5 p-3">
-        <span
-          class="text-[0.74rem] font-semibold uppercase tracking-[0.14em] text-stone-300"
-        >
-          Block size
-        </span>
-        <input
-          type="number"
-          min="2"
-          max="1024"
-          step="1"
-          class="h-11 rounded-[0.95rem] border border-white/10 bg-stone-950/65 px-3 text-[0.95rem] text-stone-50 outline-none focus:border-amber-300"
-          value={blockSize}
-          oninput={(event) =>
-            setBlockSize(
-              Number.parseInt(
-                (event.currentTarget as HTMLInputElement).value,
-                10,
-              ),
-            )}
-        />
-      </label>
-
-      <label class="grid gap-2 rounded-[1.2rem] bg-white/5 p-3">
-        <span
-          class="text-[0.74rem] font-semibold uppercase tracking-[0.14em] text-stone-300"
-        >
-          Block gap
-        </span>
-        <input
-          type="number"
-          min="0"
-          max="64"
-          step="1"
-          class="h-11 rounded-[0.95rem] border border-white/10 bg-stone-950/65 px-3 text-[0.95rem] text-stone-50 outline-none focus:border-amber-300"
-          value={blockGap}
-          oninput={(event) =>
-            setBlockGap(
-              Number.parseInt(
-                (event.currentTarget as HTMLInputElement).value,
-                10,
-              ),
-            )}
-        />
-      </label>
-
-      <label
-        class="flex items-center justify-between gap-4 rounded-[1.2rem] bg-white/5 px-3 py-3"
-      >
-        <div class="grid gap-1">
-          <span
-            class="text-[0.74rem] font-semibold uppercase tracking-[0.14em] text-stone-300"
-          >
-            Show grid
-          </span>
-          <span class="text-xs text-stone-400">
-            Toggle guide lines on the stage
-          </span>
-        </div>
-        <button
-          type="button"
-          aria-label={showGrid ? "Hide grid" : "Show grid"}
-          class={`relative h-8 w-14 rounded-full transition ${
-            showGrid ? "bg-amber-300" : "bg-white/12"
-          }`}
-          onclick={() => {
-            showGrid = !showGrid;
-          }}
-        >
-          <span
-            class={`absolute top-1 size-6 rounded-full bg-stone-950 transition ${
-              showGrid ? "left-7" : "left-1"
-            }`}
-          ></span>
-        </button>
-      </label>
-
-      <div class="grid gap-2 rounded-[1.2rem] bg-white/5 p-3">
-        <div
-          class="text-[0.74rem] font-semibold uppercase tracking-[0.14em] text-stone-300"
-        >
-          Stage metrics
-        </div>
-        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-          <div class="rounded-[0.95rem] bg-stone-950/45 px-3 py-2">
-            <div
-              class="text-[0.68rem] uppercase tracking-[0.14em] text-stone-500"
-            >
-              Columns
-            </div>
-            <div class="mt-1 text-lg font-semibold text-stone-50">{columns}</div>
-          </div>
-          <div class="rounded-[0.95rem] bg-stone-950/45 px-3 py-2">
-            <div
-              class="text-[0.68rem] uppercase tracking-[0.14em] text-stone-500"
-            >
-              Rows
-            </div>
-            <div class="mt-1 text-lg font-semibold text-stone-50">{rows}</div>
-          </div>
-          <div class="rounded-[0.95rem] bg-stone-950/45 px-3 py-2">
-            <div
-              class="text-[0.68rem] uppercase tracking-[0.14em] text-stone-500"
-            >
-              Actual block width
-            </div>
-            <div class="mt-1 text-lg font-semibold text-stone-50">
-              {cellWidth.toFixed(2)}px
-            </div>
-          </div>
-          <div class="rounded-[0.95rem] bg-stone-950/45 px-3 py-2">
-            <div
-              class="text-[0.68rem] uppercase tracking-[0.14em] text-stone-500"
-            >
-              Actual block height
-            </div>
-            <div class="mt-1 text-lg font-semibold text-stone-50">
-              {cellHeight.toFixed(2)}px
-            </div>
-          </div>
-          <div class="rounded-[0.95rem] bg-stone-950/45 px-3 py-2">
-            <div
-              class="text-[0.68rem] uppercase tracking-[0.14em] text-stone-500"
-            >
-              Painted cells
-            </div>
-            <div class="mt-1 text-lg font-semibold text-stone-50">
-              {paintedCount}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div
-      class="grid gap-3 border-t border-white/10 pt-4 sm:grid-cols-2 lg:grid-cols-1"
-    >
-      <button
-        type="button"
-        class="cursor-pointer rounded-full border border-white/10 bg-white/8 px-5 py-3 text-[0.82rem] font-semibold uppercase tracking-[0.18em] text-stone-50 transition hover:bg-white/14"
-        onclick={setCanvasToScreenSize}
-      >
-        Screen Size
-      </button>
-      <button
-        type="button"
-        class="cursor-pointer rounded-full border border-white/10 bg-white/8 px-5 py-3 text-[0.82rem] font-semibold uppercase tracking-[0.18em] text-stone-50 transition hover:bg-white/14"
-        onclick={toggleFullscreen}
-      >
-        {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-      </button>
-      <button
-        type="button"
-        class="cursor-pointer rounded-full border border-white/10 bg-white/8 px-5 py-3 text-[0.82rem] font-semibold uppercase tracking-[0.18em] text-stone-50 transition hover:bg-white/14"
-        onclick={clearAll}
-      >
-        Clear
-      </button>
-      <button
-        type="button"
-        class="cursor-pointer rounded-full bg-amber-300 px-5 py-3 text-[0.82rem] font-bold uppercase tracking-[0.18em] text-stone-950 transition hover:brightness-105"
-        onclick={exportCanvas}
-      >
-        Export PNG
-      </button>
-    </div>
-  </aside>
-
   <section
-    bind:this={stageSection}
-    class="grid min-h-0 min-w-0 place-items-center overflow-hidden rounded-[1.9rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+    class={`min-h-0 min-w-0 overflow-hidden border border-white/8  rounded-none border-0`}
   >
     <div
       bind:this={stageViewport}
-      class="grid size-full min-h-0 place-items-center overflow-hidden rounded-[1.55rem] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_38%),linear-gradient(180deg,rgba(24,24,27,0.95),rgba(10,10,10,0.98))]"
+      class={`grid size-full min-h-0 place-items-center overflow-hidden  rounded-none`}
     >
       <div
         class="relative shrink-0"
         style={`width:${scaledCanvasWidth}px;height:${scaledCanvasHeight}px;`}
       >
         <div
-          class="absolute left-0 top-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.92)_25%,rgba(245,245,244,0.92)_25%,rgba(245,245,244,0.92)_50%,rgba(255,255,255,0.92)_50%,rgba(255,255,255,0.92)_75%,rgba(245,245,244,0.92)_75%,rgba(245,245,244,0.92)_100%)] bg-[length:24px_24px] shadow-[0_20px_60px_rgba(0,0,0,0.34)]"
-          style={`width:${canvasWidth}px;height:${canvasHeight}px;transform:scale(${stageScale});transform-origin:top left;`}
+          class="absolute left-0 top-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.96)_25%,rgba(229,231,235,0.96)_25%,rgba(229,231,235,0.96)_50%,rgba(255,255,255,0.96)_50%,rgba(255,255,255,0.96)_75%,rgba(229,231,235,0.96)_75%,rgba(229,231,235,0.96)_100%)] bg-[length:20px_20px] shadow-[0_20px_60px_rgba(0,0,0,0.34)]"
+          style={`width:${persisted.canvasWidth}px;height:${persisted.canvasHeight}px;transform:scale(${stageScale});transform-origin:top left;`}
         >
           <canvas
             bind:this={canvas}
-            class="block cursor-crosshair bg-transparent"
+            class={`block bg-transparent ${
+              activeTool === "pen" ? "cursor-crosshair" : "cursor-default"
+            }`}
             onpointerdown={handlePointerDown}
             onpointermove={handlePointerMove}
+            onpointerleave={handlePointerLeave}
             oncontextmenu={handleContextMenu}
+            onwheel={handlePointerWheel}
+          ></canvas>
+          <canvas
+            bind:this={gridCanvas}
+            class="pointer-events-none absolute left-0 top-0 block"
+          ></canvas>
+          <canvas
+            bind:this={indicatorCanvas}
+            class="pointer-events-none absolute left-0 top-0 block"
           ></canvas>
         </div>
       </div>
     </div>
   </section>
+
+  <Toolbar
+    bind:toolbarElement={bottomBar}
+    {isFullscreen}
+    canvasWidth={persisted.canvasWidth}
+    canvasHeight={persisted.canvasHeight}
+    blockSize={persisted.blockSize}
+    blockGap={persisted.blockGap}
+    palette={persisted.palette}
+    selectedPaletteIndex={persisted.selectedPaletteIndex}
+    secondaryPaletteIndex={persisted.secondaryPaletteIndex}
+    penSize={persisted.penSize}
+    enablePaletteEditing={ENABLE_PALETTE_EDITING}
+    showGrid={persisted.showGrid}
+    {activeTool}
+    onCanvasWidthChange={setCanvasWidth}
+    onCanvasHeightChange={setCanvasHeight}
+    onBlockSizeChange={setBlockSize}
+    onBlockGapChange={setBlockGap}
+    onSelectPaletteColor={selectPaletteColor}
+    onSelectSecondaryPaletteColor={selectSecondaryPaletteColor}
+    onUpdatePaletteColor={updatePaletteColor}
+    onToggleGrid={() => {
+      persisted.showGrid = !persisted.showGrid;
+    }}
+    onMatchScreen={setCanvasToScreenSize}
+    onToggleFullscreen={toggleFullscreen}
+    onClear={clearAll}
+    onExport={exportCanvas}
+    onSelectTool={selectTool}
+  />
 </div>

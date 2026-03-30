@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { type UserConfig } from "vite";
+import { normalizePath, type UserConfig } from "vite";
 
 import {
   createLiquidPagesPlugin,
@@ -15,6 +15,7 @@ import generateUnoCSSConfig, { getFontsDir } from "./unocss.build.config";
 import { existsSync } from "node:fs";
 import imagesPlugin from "./src/vite-plugins/images-plugin";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
+import { VitePWA } from "vite-plugin-pwa";
 
 export interface SitioBuildMetaConfigOptions {
   workDir: string;
@@ -42,7 +43,14 @@ export async function defineSitioBuildMetaConfig({
   const publicDir = path.join(resolvedWorkDir, "public");
   const outputImagesDir = path.join(publicDir, "images");
   const outputDir = path.join(resolvedWorkDir, "www");
+  const sharedDir = path.join(__dirname, "src/shared");
+  const sitioDir = __dirname;
   const workDirHash = Buffer.from(resolvedWorkDir).toString("base64");
+  const rootAliases = {
+    "/@lib": normalizePath(libDir),
+    "/@fonts": normalizePath(getFontsDir(workDirHash)),
+    "/@shared": normalizePath(sharedDir),
+  };
 
   if (!hasPagesDir) {
     pagesDir = resolvedWorkDir;
@@ -70,17 +78,39 @@ export async function defineSitioBuildMetaConfig({
     outputImagesDir,
   );
 
+  console.log(
+    Object.entries(rootAliases).map(([key, targetPath]) => ({
+      find: new RegExp(
+        `^${key.replace(/[.*+?^${}()|[\]\\\\]/g, "\\$&")}(?=/|$)`,
+      ),
+      replacement: targetPath,
+    })),
+  );
+
+  console.log("Nromalizedddd", normalizePath(sharedDir));
   return {
     root: pagesDir,
     clearScreen: false,
     publicDir: path.join(resolvedWorkDir, "public"),
     resolve: {
-      alias: {
-        "/@lib": libDir,
-        "/@fonts": getFontsDir(workDirHash),
-      },
+      alias: Object.entries(rootAliases).map(([key, targetPath]) => ({
+        find: new RegExp(
+          `^${key.replace(/[.*+?^${}()|[\]\\\\]/g, "\\$&")}(?=/|$)`,
+        ),
+        replacement: targetPath,
+      })),
     },
+
     plugins: [
+      // {
+      //   name: "debug-resolve",
+      //   enforce: "pre",
+      //   async resolveId(id, importer) {
+      //     console.log("RESOLVE ATTEMPT:", id, "FROM:", importer);
+      //     return null;
+      //   },
+      // },
+      // rootAliasPlugin(rootAliases),
       liquidPagesPlugin,
       unoVirtualLinkPlugin(),
       notFoundPlugin(),
@@ -88,13 +118,51 @@ export async function defineSitioBuildMetaConfig({
       imagesPlugin(inputImagesDir, outputImagesDir),
       directoryIndexHtmlPlugin(),
       svelte(),
+      VitePWA({
+        registerType: "autoUpdate",
+        injectRegister: "auto",
+        workbox: {
+          globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
+        },
+        includeAssets: [
+          "icons/favicon.ico",
+          "icons/apple-touch-icon.png",
+          "icons/mask-icon.svg",
+        ],
+        manifest: {
+          name: "Sitio app",
+          short_name: "SitioApp",
+          description: "App description",
+          theme_color: "#ffffff",
+          icons: [
+            {
+              src: "icons/pwa-192x192.png",
+              sizes: "192x192",
+              type: "image/png",
+            },
+            {
+              src: "icons/pwa-512x512.png",
+              sizes: "512x512",
+              type: "image/png",
+            },
+          ],
+        },
+      }),
     ],
     cacheDir: path.join(__dirname, `node_modules/.vite-${workDirHash}`),
     server: {
       port,
+      strictPort: true,
       host,
       fs: {
-        allow: [resolvedWorkDir, componentsDir, getFontsDir(workDirHash)],
+        allow: [
+          normalizePath(resolvedWorkDir),
+          normalizePath(componentsDir),
+          normalizePath(getFontsDir(workDirHash)),
+          normalizePath(sitioDir),
+          // normalizePath(path.join(sitioDir, "src")),
+          // normalizePath(sharedDir),
+        ],
       },
     },
     build: {

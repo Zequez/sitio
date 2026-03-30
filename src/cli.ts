@@ -85,6 +85,9 @@ yargs(argv.length === 0 ? ["dev"] : argv)
   .command("pu", "Publish the already built sitio", async () => {
     await runPublish();
   })
+  .command("pwa-icons", "Generate PWA icons from icon.svg", async () => {
+    await runPwaIcons();
+  })
   .parse();
 
 async function runDev(args?: ArgumentsCamelCase<{ networkAccess: boolean }>) {
@@ -150,6 +153,7 @@ function runPreview() {
   }
 
   const server = Bun.serve({
+    hostname: "0.0.0.0",
     port: PORT,
     fetch(request) {
       const url = new URL(request.url);
@@ -185,6 +189,35 @@ async function runPublish() {
 
   console.log(`Published at ${siteUrl}`);
   console.log(`Netlify Admin panel at ${adminUrl}`);
+}
+
+async function runPwaIcons() {
+  const iconDir = path.join(workDir, "public", "icons");
+  const iconPath = path.join(iconDir, "icon.svg");
+
+  if (!existsSync(iconPath)) {
+    throw new Error(
+      `Icon file not found at ${iconPath}. Please create icon.svg in the public/icons directory.`,
+    );
+  }
+
+  console.log(`Generating PWA icons from ${iconPath}...`);
+
+  const proc = Bun.spawn(
+    ["bun", "run", "pwa-assets-generator", "--preset", "minimal", "icon.svg"],
+    {
+      cwd: iconDir,
+      stdout: "inherit",
+      stderr: "inherit",
+    },
+  );
+
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
+    throw new Error(`pwa-assets-generator failed with exit code ${exitCode}`);
+  }
+
+  console.log(`PWA icons generated successfully in ${iconDir}`);
 }
 
 // ██╗   ██╗████████╗██╗██╗     ███████╗
