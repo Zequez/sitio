@@ -78,16 +78,6 @@ export async function defineSitioBuildMetaConfig({
     outputImagesDir,
   );
 
-  console.log(
-    Object.entries(rootAliases).map(([key, targetPath]) => ({
-      find: new RegExp(
-        `^${key.replace(/[.*+?^${}()|[\]\\\\]/g, "\\$&")}(?=/|$)`,
-      ),
-      replacement: targetPath,
-    })),
-  );
-
-  console.log("Nromalizedddd", normalizePath(sharedDir));
   return {
     root: pagesDir,
     clearScreen: false,

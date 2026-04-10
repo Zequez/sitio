@@ -1,1 +1,0 @@
-This example was 90% vide-coded; I feel no shame at all.
