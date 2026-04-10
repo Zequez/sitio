@@ -18,7 +18,6 @@
     canvasWidth: number;
     canvasHeight: number;
     blockSize: number;
-    blockGap: number;
     palette: string[];
     selectedPaletteIndex: number;
     secondaryPaletteIndex: number;
@@ -30,7 +29,6 @@
   const DEFAULT_WIDTH = 1080;
   const DEFAULT_HEIGHT = 1350;
   const DEFAULT_BLOCK_SIZE = 48;
-  const DEFAULT_BLOCK_GAP = 2;
   const ENABLE_PALETTE_EDITING = false;
   const INDICATOR_RESOLUTION_SCALE = 0.5;
   const DEFAULT_PEN_SIZE = 1;
@@ -53,7 +51,6 @@
     canvasWidth: DEFAULT_WIDTH,
     canvasHeight: DEFAULT_HEIGHT,
     blockSize: DEFAULT_BLOCK_SIZE,
-    blockGap: DEFAULT_BLOCK_GAP,
     palette: [...DEFAULT_PALETTE],
     selectedPaletteIndex: 2,
     secondaryPaletteIndex: 0,
@@ -87,13 +84,6 @@
   );
   let cellWidth = $derived(persisted.canvasWidth / columns);
   let cellHeight = $derived(persisted.canvasHeight / rows);
-  let clampedBlockGap = $derived(
-    Math.max(
-      0,
-      Math.min(persisted.blockGap, Math.min(cellWidth, cellHeight) - 1),
-    ),
-  );
-  let useLowResolutionCellsCanvas = $derived(clampedBlockGap === 0);
   let stageScale = $derived.by(() => {
     if (stageViewportWidth <= 0 || stageViewportHeight <= 0) {
       return 1;
@@ -115,7 +105,7 @@
           0,
           Math.max(0, persisted.palette.length - 1),
         )
-      ] ?? DEFAULT_PALETTE[2],
+      ] ?? DEFAULT_PALETTE[2]!,
     ),
   );
   let activeSecondaryPaintColor = $derived(
@@ -126,7 +116,7 @@
           0,
           Math.max(0, persisted.palette.length - 1),
         )
-      ] ?? DEFAULT_PALETTE[0],
+      ] ?? DEFAULT_PALETTE[0]!,
     ),
   );
 
@@ -220,10 +210,6 @@
     persisted.blockSize = clampNumber(value, 2, 1024);
   }
 
-  function setBlockGap(value: number) {
-    persisted.blockGap = clampNumber(value, 0, 64);
-  }
-
   function setPenSize(value: number) {
     persisted.penSize = clampNumber(value, MIN_PEN_SIZE, MAX_PEN_SIZE);
   }
@@ -260,13 +246,31 @@
     persisted.paintedCells = {};
   }
 
-  function setCanvasToScreenSize() {
+  function setCanvasAspectRatio(
+    mode: "maxFullwindow" | "maxFullscreen" | "square" | "vGolden" | "hGolden",
+  ) {
     const nextBottomBarHeight = Math.round(
       bottomBar?.getBoundingClientRect().height ?? bottomBarHeight,
     );
 
-    setCanvasWidth(window.screen.width);
-    setCanvasHeight(window.screen.height - nextBottomBarHeight);
+    switch (mode) {
+      case "maxFullwindow":
+        setCanvasWidth(window.document.documentElement.clientWidth);
+        setCanvasHeight(
+          window.document.documentElement.clientHeight - nextBottomBarHeight,
+        );
+        break;
+      case "maxFullscreen":
+        setCanvasWidth(window.screen.width);
+        setCanvasHeight(window.screen.height - nextBottomBarHeight);
+        break;
+      case "square":
+        break;
+      case "vGolden":
+        break;
+      case "hGolden":
+        break;
+    }
   }
 
   async function toggleFullscreen() {
@@ -293,7 +297,7 @@
       return;
     }
 
-    drawPaintedSquares(context);
+    drawPaintedPixels(context);
 
     const link = document.createElement("a");
     link.href = exportCanvas.toDataURL("image/png");
@@ -387,30 +391,23 @@
     canvas.height = cellsCanvasResolution.height;
     canvas.style.width = `${persisted.canvasWidth}px`;
     canvas.style.height = `${persisted.canvasHeight}px`;
-    canvas.style.imageRendering = useLowResolutionCellsCanvas ? "pixelated" : "auto";
+    canvas.style.imageRendering = "pixelated";
 
-    context.clearRect(0, 0, cellsCanvasResolution.width, cellsCanvasResolution.height);
+    context.clearRect(
+      0,
+      0,
+      cellsCanvasResolution.width,
+      cellsCanvasResolution.height,
+    );
     context.imageSmoothingEnabled = false;
 
-    if (useLowResolutionCellsCanvas) {
-      drawPaintedPixels(context);
-      return;
-    }
-
-    drawPaintedSquares(context);
+    drawPaintedPixels(context);
   }
 
   function getCellsCanvasResolution() {
-    if (useLowResolutionCellsCanvas) {
-      return {
-        width: columns,
-        height: rows,
-      };
-    }
-
     return {
-      width: persisted.canvasWidth,
-      height: persisted.canvasHeight,
+      width: columns,
+      height: rows,
     };
   }
 
@@ -461,7 +458,8 @@
     const scaleX = width / persisted.canvasWidth;
     const scaleY = height / persisted.canvasHeight;
     const previewMode = drawMode ?? (activePaintColor ? "paint" : "erase");
-    const previewColor = drawMode === "paint" ? activeStrokeColor : activePaintColor;
+    const previewColor =
+      drawMode === "paint" ? activeStrokeColor : activePaintColor;
 
     indicatorCanvas.width = width;
     indicatorCanvas.height = height;
@@ -479,24 +477,6 @@
     context.scale(scaleX, scaleY);
     drawIndicatorSquares(context, hoverCoordinate, previewMode, previewColor);
     context.restore();
-  }
-
-  function drawPaintedSquares(context: CanvasRenderingContext2D) {
-    const gapOffset = clampedBlockGap / 2;
-    const drawWidth = Math.max(0, cellWidth - clampedBlockGap);
-    const drawHeight = Math.max(0, cellHeight - clampedBlockGap);
-
-    for (const key of Object.keys(persisted.paintedCells)) {
-      const { x, y } = parseCellKey(key);
-      context.fillStyle = persisted.paintedCells[key]!;
-
-      context.fillRect(
-        x * cellWidth + gapOffset,
-        y * cellHeight + gapOffset,
-        drawWidth,
-        drawHeight,
-      );
-    }
   }
 
   function drawPaintedPixels(context: CanvasRenderingContext2D) {
@@ -537,9 +517,8 @@
     mode: Exclude<DrawMode, null>,
     color: string | null,
   ) {
-    const gapOffset = clampedBlockGap / 2;
-    const drawWidth = Math.max(0, cellWidth - clampedBlockGap);
-    const drawHeight = Math.max(0, cellHeight - clampedBlockGap);
+    const drawWidth = Math.max(0, cellWidth);
+    const drawHeight = Math.max(0, cellHeight);
     const indicatorCoordinates = getSquareBrushCoordinates({
       center,
       size: persisted.penSize,
@@ -550,8 +529,8 @@
     context.save();
 
     for (const coordinate of indicatorCoordinates) {
-      const x = coordinate.x * cellWidth + gapOffset;
-      const y = coordinate.y * cellHeight + gapOffset;
+      const x = coordinate.x * cellWidth;
+      const y = coordinate.y * cellHeight;
 
       if (mode === "paint" && color) {
         context.fillStyle = `${color}aa`;
@@ -625,7 +604,9 @@
   }
 
   function normalizePaletteEntry(value: string) {
-    return value === TRANSPARENT_SWATCH ? TRANSPARENT_SWATCH : value.toLowerCase();
+    return value === TRANSPARENT_SWATCH
+      ? TRANSPARENT_SWATCH
+      : value.toLowerCase();
   }
 
   function normalizePersistedState(
@@ -656,7 +637,9 @@
       Array.isArray(value.palette) &&
       value.palette.length > 0
         ? value.palette
-            .filter((entry): entry is string => typeof entry === "string" && !!entry)
+            .filter(
+              (entry): entry is string => typeof entry === "string" && !!entry,
+            )
             .map(normalizePaletteEntry)
         : [...DEFAULT_PALETTE];
     const hasTransparentSwatch = rawPalette.includes(TRANSPARENT_SWATCH);
@@ -678,7 +661,6 @@
       canvasWidth: clampNumber(value.canvasWidth ?? DEFAULT_WIDTH, 64, 4096),
       canvasHeight: clampNumber(value.canvasHeight ?? DEFAULT_HEIGHT, 64, 4096),
       blockSize: clampNumber(value.blockSize ?? DEFAULT_BLOCK_SIZE, 2, 1024),
-      blockGap: clampNumber(value.blockGap ?? DEFAULT_BLOCK_GAP, 0, 64),
       palette,
       selectedPaletteIndex,
       secondaryPaletteIndex,
@@ -738,7 +720,6 @@
     canvasWidth={persisted.canvasWidth}
     canvasHeight={persisted.canvasHeight}
     blockSize={persisted.blockSize}
-    blockGap={persisted.blockGap}
     palette={persisted.palette}
     selectedPaletteIndex={persisted.selectedPaletteIndex}
     secondaryPaletteIndex={persisted.secondaryPaletteIndex}
@@ -749,14 +730,13 @@
     onCanvasWidthChange={setCanvasWidth}
     onCanvasHeightChange={setCanvasHeight}
     onBlockSizeChange={setBlockSize}
-    onBlockGapChange={setBlockGap}
     onSelectPaletteColor={selectPaletteColor}
     onSelectSecondaryPaletteColor={selectSecondaryPaletteColor}
     onUpdatePaletteColor={updatePaletteColor}
     onToggleGrid={() => {
       persisted.showGrid = !persisted.showGrid;
     }}
-    onMatchScreen={setCanvasToScreenSize}
+    onMatchScreen={() => setCanvasAspectRatio("maxFullscreen")}
     onToggleFullscreen={toggleFullscreen}
     onClear={clearAll}
     onExport={exportCanvas}

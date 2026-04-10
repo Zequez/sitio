@@ -7,7 +7,6 @@
     canvasWidth: number;
     canvasHeight: number;
     blockSize: number;
-    blockGap: number;
     palette: string[];
     selectedPaletteIndex: number;
     secondaryPaletteIndex: number;
@@ -18,7 +17,6 @@
     onCanvasWidthChange: (value: number) => void;
     onCanvasHeightChange: (value: number) => void;
     onBlockSizeChange: (value: number) => void;
-    onBlockGapChange: (value: number) => void;
     onSelectPaletteColor: (index: number) => void;
     onSelectSecondaryPaletteColor: (index: number) => void;
     onUpdatePaletteColor: (index: number, color: string) => void;
@@ -36,7 +34,6 @@
     canvasWidth,
     canvasHeight,
     blockSize,
-    blockGap,
     palette,
     selectedPaletteIndex,
     secondaryPaletteIndex,
@@ -47,7 +44,6 @@
     onCanvasWidthChange,
     onCanvasHeightChange,
     onBlockSizeChange,
-    onBlockGapChange,
     onSelectPaletteColor,
     onSelectSecondaryPaletteColor,
     onUpdatePaletteColor,
@@ -157,24 +153,6 @@
       />
     </label>
 
-    <label
-      class="flex h-10 items-center gap-2 rounded-[0.8rem] border border-white/10 bg-white/[0.06] px-3"
-      aria-label="Block gap"
-      title="Block gap"
-    >
-      <span class="i-fa-grip text-sm text-stone-300"></span>
-      <input
-        type="number"
-        min="0"
-        max="64"
-        step="1"
-        inputmode="numeric"
-        class="w-16 border-0 bg-transparent text-sm text-stone-50 outline-none"
-        value={blockGap}
-        oninput={(event) => onBlockGapChange(parseNumberInput(event))}
-      />
-    </label>
-
     <button
       type="button"
       aria-label={showGrid ? "Hide grid" : "Show grid"}
@@ -254,7 +232,9 @@
                   ? "bg-[linear-gradient(45deg,rgba(255,255,255,0.96)_25%,rgba(229,231,235,0.96)_25%,rgba(229,231,235,0.96)_50%,rgba(255,255,255,0.96)_50%,rgba(255,255,255,0.96)_75%,rgba(229,231,235,0.96)_75%,rgba(229,231,235,0.96)_100%)] bg-[length:20px_20px]"
                   : ""
               }`}
-              style={color === TRANSPARENT_SWATCH ? undefined : `background:${color};`}
+              style={color === TRANSPARENT_SWATCH
+                ? undefined
+                : `background:${color};`}
             ></span>
             <span
               class={`relative z-1 i-fa-check text-[0.65rem] ${

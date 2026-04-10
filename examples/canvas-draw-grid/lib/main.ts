@@ -1,5 +1,5 @@
 import { mount } from "svelte";
-import Draw from "./Draw.svelte";
+import Draw from "./Draw2.svelte";
 
 const root = document.getElementById("root");
 
