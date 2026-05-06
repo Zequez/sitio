@@ -125,7 +125,13 @@ export async function defineSitioBuildMetaConfig({
   }
 
   if (useSvelteEntrypoints) {
-    pagesPlugins.push(...(await createSveltePagesPlugin(pagesDir, componentsDir)));
+    pagesPlugins.push(
+      ...(await createSveltePagesPlugin(
+        pagesDir,
+        componentsDir,
+        ignoredEntrypointDirs,
+      )),
+    );
   }
 
   // const liquidPagesPlugin = await createLiquidPagesPlugin(
