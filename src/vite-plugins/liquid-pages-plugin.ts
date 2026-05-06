@@ -16,6 +16,7 @@ import { parse } from "yaml";
 import { replaceComponents } from "../lib/htmlTagsToLiquidInclude.ts";
 import { renderMarkdownWithHtmlPassthrough } from "../lib/renderMarkdownWithHtmlPassthrough.ts";
 import { imagesSizes, type ImageSet } from "./images-plugin.ts";
+import { collectVirtualImagesData } from "./virtual-images-plugin.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PRESET_COMPONENTS_DIR = path.join(__dirname, "../components");
@@ -61,8 +62,9 @@ export async function createLiquidPagesPlugin(
       }
     }
 
-    nextData.images = await collectImagesFiles(imagesDir);
-    nextData.imagesSizes = imagesSizes;
+    const imagesData = collectVirtualImagesData(imagesDir);
+    nextData.images = imagesData.images;
+    nextData.imagesSizes = imagesData.imagesSizes;
     liquidData = nextData;
   }
 
@@ -109,25 +111,6 @@ export async function createLiquidPagesPlugin(
    *  }
    * }
    */
-
-  async function collectImagesFiles(imagesDir: string) {
-    const imageFiles = collectGeneratedImageFiles(imagesDir);
-    const imageMap: Record<string, unknown> = {};
-
-    for (const imageFile of imageFiles) {
-      const relativePath = path.relative(imagesDir, imageFile);
-      const imagePath = relativePath.replace(/\.webp$/i, "").split(path.sep);
-      const imageKey = imagePath[imagePath.length - 1] ?? "";
-
-      const imageValue = isLowQualityImageKey(imageKey)
-        ? asDataUri(readFileSync(imageFile))
-        : `/images/${relativePath.split(path.sep).join("/")}`;
-
-      setNestedValue(imageMap, imagePath, imageValue);
-    }
-
-    return imageMap;
-  }
 
   await refreshData();
 
@@ -354,44 +337,6 @@ function createImageSrcset(image: ImageSet, thumb: boolean) {
 
 function isLowQualityImageKey(imageKey: string) {
   return imageKey === "0" || imageKey.endsWith("_0") || imageKey.endsWith("-0");
-}
-
-function asDataUri(fileBuffer: Buffer) {
-  return `data:image/webp;base64,${fileBuffer.toString("base64")}`;
-}
-
-function collectGeneratedImageFiles(
-  imagesDir: string,
-  currentDir = imagesDir,
-): string[] {
-  let entries;
-
-  try {
-    entries = readdirSync(currentDir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-
-  const imageFiles: string[] = [];
-
-  for (const entry of entries) {
-    if (entry.name.startsWith("_") || entry.name === ".DS_Store") {
-      continue;
-    }
-
-    const absolutePath = path.join(currentDir, entry.name);
-
-    if (entry.isDirectory()) {
-      imageFiles.push(...collectGeneratedImageFiles(imagesDir, absolutePath));
-      continue;
-    }
-
-    if (entry.isFile() && entry.name.endsWith(".webp")) {
-      imageFiles.push(absolutePath);
-    }
-  }
-
-  return imageFiles;
 }
 
 function setNestedValue(

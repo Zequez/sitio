@@ -17,6 +17,7 @@ import {
 import { notFoundPlugin } from "./src/vite-plugins/not-found-plugin";
 import { unoVirtualLinkPlugin } from "./src/vite-plugins/uno-virtual-link-plugin";
 import { directoryIndexHtmlPlugin } from "./src/vite-plugins/directory-index-html-plugin";
+import { virtualImagesPlugin } from "./src/vite-plugins/virtual-images-plugin";
 import UnoCSS from "unocss/vite";
 import generateUnoCSSConfig, { getFontsDir } from "./unocss.build.config";
 import { existsSync, readFileSync } from "node:fs";
@@ -174,6 +175,7 @@ export async function defineSitioBuildMetaConfig({
       notFoundPlugin(),
       UnoCSS(generateUnoCSSConfig(workDir, workDirHash)),
       imagesPlugin(inputImagesDir, outputImagesDir),
+      virtualImagesPlugin(outputImagesDir),
       directoryIndexHtmlPlugin(),
       svelte(),
       pwaConfig
