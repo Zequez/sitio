@@ -1,18 +1,25 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parse } from "yaml";
+
 import { normalizePath, type UserConfig } from "vite";
 
 import {
   createLiquidPagesPlugin,
   collectHtmlEntrypoints,
 } from "./src/vite-plugins/liquid-pages-plugin";
+import {
+  createSveltePagesPlugin,
+  collectSvelteHtmlEntrypoints,
+} from "./src/vite-plugins/svelte-pages-plugin";
+
 import { notFoundPlugin } from "./src/vite-plugins/not-found-plugin";
 import { unoVirtualLinkPlugin } from "./src/vite-plugins/uno-virtual-link-plugin";
 import { directoryIndexHtmlPlugin } from "./src/vite-plugins/directory-index-html-plugin";
 import UnoCSS from "unocss/vite";
 import generateUnoCSSConfig, { getFontsDir } from "./unocss.build.config";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import imagesPlugin from "./src/vite-plugins/images-plugin";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { VitePWA } from "vite-plugin-pwa";
@@ -23,6 +30,12 @@ export interface SitioBuildMetaConfigOptions {
   host?: string;
   buildMode?: boolean;
 }
+
+type PwaConfig = {
+  name: string;
+  description: string;
+  theme: string;
+};
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -71,12 +84,61 @@ export async function defineSitioBuildMetaConfig({
         "src",
       ]);
 
-  const liquidPagesPlugin = await createLiquidPagesPlugin(
+  const htmlEntrypoints = collectHtmlEntrypoints(
     pagesDir,
-    componentsDir,
-    dataDir,
-    outputImagesDir,
+    ignoredEntrypointDirs,
   );
+  const svelteEntrypoints = collectSvelteHtmlEntrypoints(
+    pagesDir,
+    ignoredEntrypointDirs,
+  );
+  const useHtmlEntrypoints = Object.keys(htmlEntrypoints).length > 0;
+  const useSvelteEntrypoints = Object.keys(svelteEntrypoints).length > 0;
+  const overlappingEntrypoints = Object.keys(htmlEntrypoints).filter((entryName) =>
+    Object.hasOwn(svelteEntrypoints, entryName),
+  );
+
+  if (overlappingEntrypoints.length > 0) {
+    throw new Error(
+      `Duplicate page routes found for: ${overlappingEntrypoints.join(", ")}`,
+    );
+  }
+
+  const htmlEntrypointsGetter = () => {
+    return {
+      ...htmlEntrypoints,
+      ...svelteEntrypoints,
+    };
+  };
+
+  const pagesPlugins = [];
+
+  if (useHtmlEntrypoints) {
+    pagesPlugins.push(
+      ...(await createLiquidPagesPlugin(
+        pagesDir,
+        componentsDir,
+        dataDir,
+        outputImagesDir,
+      )),
+    );
+  }
+
+  if (useSvelteEntrypoints) {
+    pagesPlugins.push(...(await createSveltePagesPlugin(pagesDir, componentsDir)));
+  }
+
+  // const liquidPagesPlugin = await createLiquidPagesPlugin(
+  //   pagesDir,
+  //   componentsDir,
+  //   dataDir,
+  //   outputImagesDir,
+  // );
+
+  const pwaConfigPath = path.join(workDir, "pwa.yml");
+  const pwaConfig: PwaConfig | null = existsSync(pwaConfigPath)
+    ? parse(readFileSync(pwaConfigPath, "utf8"))
+    : null;
 
   return {
     root: pagesDir,
@@ -101,43 +163,45 @@ export async function defineSitioBuildMetaConfig({
       //   },
       // },
       // rootAliasPlugin(rootAliases),
-      liquidPagesPlugin,
+      pagesPlugins,
       unoVirtualLinkPlugin(),
       notFoundPlugin(),
       UnoCSS(generateUnoCSSConfig(workDir, workDirHash)),
       imagesPlugin(inputImagesDir, outputImagesDir),
       directoryIndexHtmlPlugin(),
       svelte(),
-      VitePWA({
-        registerType: "autoUpdate",
-        injectRegister: "auto",
-        workbox: {
-          globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
-        },
-        includeAssets: [
-          "icons/favicon.ico",
-          "icons/apple-touch-icon.png",
-          "icons/mask-icon.svg",
-        ],
-        manifest: {
-          name: "Sitio app",
-          short_name: "SitioApp",
-          description: "App description",
-          theme_color: "#ffffff",
-          icons: [
-            {
-              src: "icons/pwa-192x192.png",
-              sizes: "192x192",
-              type: "image/png",
+      pwaConfig
+        ? VitePWA({
+            registerType: "autoUpdate",
+            injectRegister: "auto",
+            workbox: {
+              globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
             },
-            {
-              src: "icons/pwa-512x512.png",
-              sizes: "512x512",
-              type: "image/png",
+            includeAssets: [
+              "icons/favicon.ico",
+              "icons/apple-touch-icon.png",
+              "icons/mask-icon.svg",
+            ],
+            manifest: {
+              name: pwaConfig.name,
+              short_name: pwaConfig.name.replace(/\s/g, ""),
+              description: pwaConfig.description,
+              theme_color: pwaConfig.theme,
+              icons: [
+                {
+                  src: "icons/pwa-192x192.png",
+                  sizes: "192x192",
+                  type: "image/png",
+                },
+                {
+                  src: "icons/pwa-512x512.png",
+                  sizes: "512x512",
+                  type: "image/png",
+                },
+              ],
             },
-          ],
-        },
-      }),
+          })
+        : null,
     ],
     cacheDir: path.join(__dirname, `node_modules/.vite-${workDirHash}`),
     server: {
@@ -158,7 +222,7 @@ export async function defineSitioBuildMetaConfig({
     build: {
       outDir: outputDir,
       rollupOptions: {
-        input: collectHtmlEntrypoints(pagesDir, ignoredEntrypointDirs), // This is just for build, so does not matter if it doesn't regenrate on server restart
+        input: htmlEntrypointsGetter(),
       },
     },
   };

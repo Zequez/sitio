@@ -43,6 +43,6 @@
     "examples/**/*.d.ts",
     "examples/**/*.svelte",
     "*.ts"
-  ],
+, "examples/svelte-direct/index.svx"  ],
   "exclude": ["node_modules", "dist", "www"]
 }

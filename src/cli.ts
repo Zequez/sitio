@@ -204,9 +204,18 @@ async function runPwaIcons() {
   console.log(`Generating PWA icons from ${iconPath}...`);
 
   const proc = Bun.spawn(
-    ["bun", "run", "pwa-assets-generator", "--preset", "minimal", "icon.svg"],
+    [
+      "bun",
+      "run",
+      "pwa-assets-generator",
+      "--root",
+      iconDir,
+      "--preset",
+      "minimal",
+      path.join(iconDir, "icon.svg"),
+    ],
     {
-      cwd: iconDir,
+      cwd: cliDir,
       stdout: "inherit",
       stderr: "inherit",
     },

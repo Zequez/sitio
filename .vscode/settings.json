@@ -8,5 +8,6 @@
     "activityBar.background": "#442617",
     "titleBar.activeBackground": "#5F3520",
     "titleBar.activeForeground": "#FDFBFA"
-  }
+  },
+  "folder-color.pathColors": []
 }
