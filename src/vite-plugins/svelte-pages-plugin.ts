@@ -14,6 +14,7 @@ import {
   type ResolvedConfig,
   type ViteDevServer,
 } from "vite";
+import { virtualImagesPlugin } from "./virtual-images-plugin";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PRESET_COMPONENTS_DIR = path.join(__dirname, "../components");
@@ -38,6 +39,7 @@ const DEFAULT_IGNORED_SVELTE_DIRS = new Set([
 export async function createSveltePagesPlugin(
   pagesDir: string,
   componentsDir: string,
+  outputImagesDir: string,
   ignoredDirectoryNames?: Set<string>,
 ): Promise<Plugin[]> {
   const standardLayoutPath = resolveStandardLayoutPath(componentsDir);
@@ -190,7 +192,12 @@ export async function createSveltePagesPlugin(
       name: "svelte-pages-prerender",
       apply: "build",
       async writeBundle() {
-        await prerenderBuiltPages(collectPages(), pagesDir, config);
+        await prerenderBuiltPages(
+          collectPages(),
+          pagesDir,
+          config,
+          outputImagesDir,
+        );
       },
     },
   ];
@@ -236,12 +243,13 @@ async function prerenderBuiltPages(
   pages: SveltePageFile[],
   pagesDir: string,
   config: ResolvedConfig,
+  outputImagesDir: string,
 ) {
   if (pages.length === 0) {
     return;
   }
 
-  const ssrServer = await createPrerenderServer(config);
+  const ssrServer = await createPrerenderServer(config, outputImagesDir);
 
   try {
     for (const page of pages) {
@@ -260,7 +268,10 @@ async function prerenderBuiltPages(
   }
 }
 
-async function createPrerenderServer(config: ResolvedConfig) {
+async function createPrerenderServer(
+  config: ResolvedConfig,
+  outputImagesDir: string,
+) {
   return createServer({
     appType: "custom",
     clearScreen: false,
@@ -289,6 +300,7 @@ async function createPrerenderServer(config: ResolvedConfig) {
           dev: false,
         },
       }),
+      virtualImagesPlugin(outputImagesDir),
     ],
   });
 }
@@ -506,11 +518,11 @@ function renderPageShell(
 ) {
   return stripUnoVirtualImportScript(
     liquid.parseAndRenderSync(standardLayoutTemplate, {
-    title: "",
-    description: "",
-    theme: "",
-    class: "",
-    content,
+      title: "",
+      description: "",
+      theme: "",
+      class: "",
+      content,
     }),
   );
 }

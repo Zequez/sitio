@@ -16,11 +16,6 @@
     alt?: string;
   }>();
 
-  const previewKey = thumb ? "thumb_0" : "0";
-  const fallbackKey = thumb ? "thumb_1" : "1";
-  const resolvedSrc = src[previewKey] ?? src[fallbackKey] ?? "";
-  const resolvedSrcset = createSrcset(src, thumb);
-
   function createSrcset(image: ImageSet, useThumb: boolean) {
     return Object.entries(imagesSizes)
       .filter(([sizeKey]) => {
@@ -45,11 +40,18 @@
       imageKey === "0" || imageKey.endsWith("_0") || imageKey.endsWith("-0")
     );
   }
+
+  function getResolvedSrc(image: ImageSet, useThumb: boolean) {
+    const previewKey = useThumb ? "thumb_0" : "0";
+    const fallbackKey = useThumb ? "thumb_1" : "1";
+
+    return image[previewKey] ?? image[fallbackKey] ?? "";
+  }
 </script>
 
 <img
-  src={resolvedSrc}
-  srcset={resolvedSrcset}
+  src={getResolvedSrc(src, thumb)}
+  srcset={createSrcset(src, thumb)}
   sizes="100vw"
   class={className}
   {alt}

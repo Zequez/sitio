@@ -6,6 +6,7 @@ import {
   type FSWatcher,
 } from "node:fs";
 import * as path from "node:path";
+import { resiliantWatcher } from "src/lib/resiliant-watcher.ts";
 
 import { type Plugin, type ViteDevServer } from "vite";
 
@@ -59,72 +60,75 @@ export function virtualImagesPlugin(imagesDir: string): Plugin {
       ].join("\n");
     },
     configureServer(server) {
-      let reloadTimer: ReturnType<typeof setTimeout> | undefined;
-      let imagesWatcher: FSWatcher | undefined;
-      let parentWatcher: FSWatcher | undefined;
+      const watcher = resiliantWatcher(imagesDir, () => {
+        notifyImagesChanged(server);
+      });
 
-      const queueReload = () => {
-        if (reloadTimer) {
-          clearTimeout(reloadTimer);
-        }
+      // let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+      // let imagesWatcher: FSWatcher | undefined;
+      // let parentWatcher: FSWatcher | undefined;
 
-        reloadTimer = setTimeout(() => {
-          reloadTimer = undefined;
-          notifyImagesChanged(server);
-        }, 50);
-      };
+      // const queueReload = () => {
+      //   if (reloadTimer) {
+      //     clearTimeout(reloadTimer);
+      //   }
 
-      const closeImagesWatcher = () => {
-        imagesWatcher?.close();
-        imagesWatcher = undefined;
-      };
+      //   reloadTimer = setTimeout(() => {
+      //     reloadTimer = undefined;
+      //     notifyImagesChanged(server);
+      //   }, 50);
+      // };
 
-      const attachImagesWatcher = () => {
-        if (imagesWatcher || !existsSync(imagesDir)) {
-          return;
-        }
+      // const closeImagesWatcher = () => {
+      //   imagesWatcher?.close();
+      //   imagesWatcher = undefined;
+      // };
 
-        try {
-          imagesWatcher = watch(imagesDir, { recursive: true }, () => {
-            queueReload();
-          });
-        } catch {
-          imagesWatcher = watch(imagesDir, () => {
-            queueReload();
-          });
-        }
-      };
+      // const attachImagesWatcher = () => {
+      //   if (imagesWatcher || !existsSync(imagesDir)) {
+      //     return;
+      //   }
 
-      const refreshImagesWatcher = () => {
-        if (existsSync(imagesDir)) {
-          attachImagesWatcher();
-          return;
-        }
+      //   try {
+      //     imagesWatcher = watch(imagesDir, { recursive: true }, () => {
+      //       queueReload();
+      //     });
+      //   } catch {
+      //     imagesWatcher = watch(imagesDir, () => {
+      //       queueReload();
+      //     });
+      //   }
+      // };
 
-        closeImagesWatcher();
-      };
+      // const refreshImagesWatcher = () => {
+      //   if (existsSync(imagesDir)) {
+      //     attachImagesWatcher();
+      //     return;
+      //   }
 
-      refreshImagesWatcher();
+      //   closeImagesWatcher();
+      // };
 
-      try {
-        parentWatcher = watch(imagesParentDir, () => {
-          refreshImagesWatcher();
-          queueReload();
-        });
-      } catch {
-        parentWatcher = watch(imagesParentDir, () => {
-          refreshImagesWatcher();
-          queueReload();
-        });
-      }
+      // refreshImagesWatcher();
+
+      // try {
+      //   parentWatcher = watch(imagesParentDir, () => {
+      //     refreshImagesWatcher();
+      //     queueReload();
+      //   });
+      // } catch {
+      //   parentWatcher = watch(imagesParentDir, () => {
+      //     refreshImagesWatcher();
+      //     queueReload();
+      //   });
+      // }
 
       server.httpServer?.once("close", () => {
-        if (reloadTimer) {
-          clearTimeout(reloadTimer);
-        }
+        // if (reloadTimer) {
+        //   clearTimeout(reloadTimer);
+        // }
 
-        closeImagesWatcher();
-        parentWatcher?.close();
+        watcher.close();
       });
     },
   };

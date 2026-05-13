@@ -1,6 +1,5 @@
 <script lang="ts">
   import { images, imagesSizes } from "virtual:images";
-  import ImgSet from "/@shared/ImgSet.svelte";
 </script>
 
 <div class="bg-blue">

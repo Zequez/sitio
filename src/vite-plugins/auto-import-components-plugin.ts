@@ -1,0 +1,209 @@
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import * as path from "node:path";
+
+import AutoImport from "unplugin-auto-import/vite";
+import { type Plugin } from "vite";
+
+interface SvelteComponentImport {
+  importPath: string;
+  importName: string;
+}
+
+interface CreateAutoImportComponentsPluginOptions {
+  componentsDir: string;
+  sharedDir: string;
+  dtsPath: string;
+}
+
+export function createAutoImportComponentsPlugin({
+  componentsDir,
+  sharedDir,
+  dtsPath,
+}: CreateAutoImportComponentsPluginOptions): Plugin[] {
+  const importsMap = createComponentsImportsMap(componentsDir, sharedDir);
+  const autoImportPlugin = AutoImport({
+    dts: false,
+    include: [/\.[tj]sx?$/, /\.svelte$/],
+    imports: importsMap,
+    injectAtEnd: true,
+  });
+
+  const plugins = Array.isArray(autoImportPlugin)
+    ? autoImportPlugin
+    : [autoImportPlugin];
+
+  plugins.push(createAutoImportDtsWriterPlugin(importsMap, dtsPath));
+
+  return plugins;
+}
+
+function createComponentsImportsMap(componentsDir: string, sharedDir: string) {
+  const importsMap: Record<string, Array<[string, string]>> = {};
+  const seenImportNames = new Set<string>();
+
+  registerDirectoryComponents(
+    importsMap,
+    seenImportNames,
+    componentsDir,
+    "@components",
+  );
+  registerDirectoryComponents(importsMap, seenImportNames, sharedDir, "@shared");
+
+  return [importsMap];
+}
+
+function registerDirectoryComponents(
+  importsMap: Record<string, Array<[string, string]>>,
+  seenImportNames: Set<string>,
+  directoryPath: string,
+  importBasePath: string,
+) {
+  const componentImports = collectSvelteComponentImports(
+    directoryPath,
+    importBasePath,
+  );
+
+  for (const componentImport of componentImports) {
+    if (seenImportNames.has(componentImport.importName)) {
+      continue;
+    }
+
+    seenImportNames.add(componentImport.importName);
+    importsMap[componentImport.importPath] = [["default", componentImport.importName]];
+  }
+}
+
+function collectSvelteComponentImports(
+  targetDir: string,
+  importBasePath: string,
+  currentDir = targetDir,
+): SvelteComponentImport[] {
+  if (!existsSync(currentDir)) {
+    return [];
+  }
+
+  let entries;
+
+  try {
+    entries = readdirSync(currentDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const componentImports: SvelteComponentImport[] = [];
+
+  for (const entry of entries) {
+    if (entry.name.startsWith("_") || entry.name.startsWith(".")) {
+      continue;
+    }
+
+    const absolutePath = path.join(currentDir, entry.name);
+
+    if (entry.isDirectory()) {
+      componentImports.push(
+        ...collectSvelteComponentImports(
+          targetDir,
+          importBasePath,
+          absolutePath,
+        ),
+      );
+      continue;
+    }
+
+    if (!entry.isFile() || path.extname(entry.name) !== ".svelte") {
+      continue;
+    }
+
+    const relativePath = path.relative(targetDir, absolutePath);
+    const importName = toComponentImportName(relativePath);
+    const normalizedRelativePath = relativePath.split(path.sep).join("/");
+
+    componentImports.push({
+      importPath: `${importBasePath}/${normalizedRelativePath}`,
+      importName,
+    });
+  }
+
+  return componentImports.sort((left, right) =>
+    left.importName.localeCompare(right.importName),
+  );
+}
+
+function toComponentImportName(relativePath: string) {
+  return relativePath
+    .slice(0, -path.extname(relativePath).length)
+    .split(path.sep)
+    .flatMap((segment) => segment.split(/[^a-zA-Z0-9]+/))
+    .filter(Boolean)
+    .map((segment) => {
+      return segment[0]!.toUpperCase() + segment.slice(1);
+    })
+    .join("");
+}
+
+function createAutoImportDtsWriterPlugin(
+  importsMap: Array<Record<string, Array<[string, string]>>>,
+  dtsPath: string,
+): Plugin {
+  const dtsSource = createAutoImportDtsSource(importsMap);
+
+  function writeDtsFile() {
+    mkdirSync(path.dirname(dtsPath), { recursive: true });
+
+    const previousSource = existsSync(dtsPath) ? readFileSync(dtsPath, "utf8") : "";
+
+    if (previousSource === dtsSource) {
+      return;
+    }
+
+    writeFileSync(dtsPath, dtsSource);
+  }
+
+  return {
+    name: "sitio-auto-import-dts-writer",
+    buildStart() {
+      writeDtsFile();
+    },
+    configureServer() {
+      writeDtsFile();
+    },
+  };
+}
+
+function createAutoImportDtsSource(
+  importsMaps: Array<Record<string, Array<[string, string]>>>,
+) {
+  const globalDeclarations = importsMaps
+    .flatMap((importsMap) => {
+      return Object.entries(importsMap).flatMap(([importPath, imports]) => {
+        return imports.map(([, importName]) => {
+          return `  const ${importName}: typeof import("${importPath}").default`;
+        });
+      });
+    })
+    .sort()
+    .join("\n");
+
+  return [
+    "/* eslint-disable */",
+    "/* prettier-ignore */",
+    "// @ts-nocheck",
+    "// noinspection JSUnusedGlobalSymbols",
+    "// Generated by Sitio auto-import components plugin",
+    'declare module "@components/*" {',
+    '  import type { Component } from "svelte";',
+    "  const component: Component<any>;",
+    "  export default component;",
+    "}",
+    'declare module "@shared/*" {',
+    '  import type { Component } from "svelte";',
+    "  const component: Component<any>;",
+    "  export default component;",
+    "}",
+    "export {}",
+    "declare global {",
+    globalDeclarations,
+    "}",
+    "",
+  ].join("\n");
+}

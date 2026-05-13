@@ -18,6 +18,8 @@ import { notFoundPlugin } from "./src/vite-plugins/not-found-plugin";
 import { unoVirtualLinkPlugin } from "./src/vite-plugins/uno-virtual-link-plugin";
 import { directoryIndexHtmlPlugin } from "./src/vite-plugins/directory-index-html-plugin";
 import { virtualImagesPlugin } from "./src/vite-plugins/virtual-images-plugin";
+import { createAutoImportComponentsPlugin } from "./src/vite-plugins/auto-import-components-plugin";
+import { tunnelingPlugin } from "./src/vite-plugins/tunneling-plugin";
 import UnoCSS from "unocss/vite";
 import generateUnoCSSConfig, { getFontsDir } from "./unocss.build.config";
 import { existsSync, readFileSync } from "node:fs";
@@ -59,8 +61,12 @@ export async function defineSitioBuildMetaConfig({
   const outputDir = path.join(resolvedWorkDir, "www");
   const sharedDir = path.join(__dirname, "src/shared");
   const sitioDir = __dirname;
+  const autoImportsDtsPath = path.join(resolvedWorkDir, "auto-imports.d.ts");
   const workDirHash = Buffer.from(resolvedWorkDir).toString("base64");
   const rootAliases = {
+    "@components": normalizePath(componentsDir),
+    "@shared": normalizePath(sharedDir),
+    "/@components": normalizePath(componentsDir),
     "/@lib": normalizePath(libDir),
     "/@fonts": normalizePath(getFontsDir(workDirHash)),
     "/@shared": normalizePath(sharedDir),
@@ -95,8 +101,8 @@ export async function defineSitioBuildMetaConfig({
   );
   const useHtmlEntrypoints = Object.keys(htmlEntrypoints).length > 0;
   const useSvelteEntrypoints = Object.keys(svelteEntrypoints).length > 0;
-  const overlappingEntrypoints = Object.keys(htmlEntrypoints).filter((entryName) =>
-    Object.hasOwn(svelteEntrypoints, entryName),
+  const overlappingEntrypoints = Object.keys(htmlEntrypoints).filter(
+    (entryName) => Object.hasOwn(svelteEntrypoints, entryName),
   );
 
   if (overlappingEntrypoints.length > 0) {
@@ -130,6 +136,7 @@ export async function defineSitioBuildMetaConfig({
       ...(await createSveltePagesPlugin(
         pagesDir,
         componentsDir,
+        outputImagesDir,
         ignoredEntrypointDirs,
       )),
     );
@@ -171,6 +178,14 @@ export async function defineSitioBuildMetaConfig({
       // },
       // rootAliasPlugin(rootAliases),
       pagesPlugins,
+      createAutoImportComponentsPlugin({
+        componentsDir,
+        sharedDir,
+        dtsPath: autoImportsDtsPath,
+      }),
+      tunnelingPlugin({
+        workDir: resolvedWorkDir,
+      }),
       unoVirtualLinkPlugin(),
       notFoundPlugin(),
       UnoCSS(generateUnoCSSConfig(workDir, workDirHash)),

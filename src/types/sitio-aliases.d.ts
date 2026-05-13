@@ -1,3 +1,29 @@
+declare module "@components";
+declare module "@components/*" {
+  import type { Component } from "svelte";
+  const component: Component<any>;
+  export default component;
+}
+
+declare module "/@components";
+declare module "/@components/*" {
+  import type { Component } from "svelte";
+  const component: Component<any>;
+  export default component;
+}
+
+declare module "@shared/*" {
+  import type { Component } from "svelte";
+  const component: Component<any>;
+  export default component;
+}
+
+declare module "/@shared/*" {
+  import type { Component } from "svelte";
+  const component: Component<any>;
+  export default component;
+}
+
 declare module "/@lib";
 declare module "/@lib/*";
 
